@@ -560,40 +560,11 @@ class GD extends PHPThumb
      */
     public function resizePercent(int $percent = 0): GD
     {
-        if (!is_numeric($percent)) {
-            throw new \InvalidArgumentException ('$percent must be numeric');
-        }
-
-        $this->percent = intval($percent);
+        $this->percent = $percent;
 
         $this->calcImageSizePercent($this->currentDimensions['width'], $this->currentDimensions['height']);
 
-        if (function_exists('imagecreatetruecolor')) {
-            $this->workingImage = imagecreatetruecolor($this->newDimensions['newWidth'], $this->newDimensions['newHeight']);
-        } else {
-            $this->workingImage = imagecreate($this->newDimensions['newWidth'], $this->newDimensions['newHeight']);
-        }
-
-        $this->preserveAlpha();
-
-        imagecopyresampled(
-            $this->workingImage,
-            $this->oldImage,
-            0,
-            0,
-            0,
-            0,
-            $this->newDimensions['newWidth'],
-            $this->newDimensions['newHeight'],
-            $this->currentDimensions['width'],
-            $this->currentDimensions['height']
-        );
-
-        $this->oldImage                    = $this->workingImage;
-        $this->currentDimensions['width']  = $this->newDimensions['newWidth'];
-        $this->currentDimensions['height'] = $this->newDimensions['newHeight'];
-
-        return $this;
+        return $this->resize($this->newDimensions['newWidth'], $this->newDimensions['newHeight']);
     }
 
     /**
