@@ -96,6 +96,7 @@ class GD extends PHPThumb
             case 'GIF':
                 $this->oldImage = imagecreatefromgif($this->fileName);
                 break;
+            case 'JFIF':
             case 'JPG':
                 $this->oldImage = imagecreatefromjpeg($this->fileName);
                 break;
