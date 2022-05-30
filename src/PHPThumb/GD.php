@@ -106,6 +106,8 @@ class GD extends PHPThumb
 			case 'STRING':
 				$this->oldImage = imagecreatefromstring($this->fileName);
 				break;
+			case 'WEBP':
+				$this->oldImage = imagecreatefromwebp($this->fileName);
 		}
 
 		$this->currentDimensions = [
@@ -854,6 +856,13 @@ class GD extends PHPThumb
 				}
 				imagepng($this->oldImage);
 				break;
+			case 'WEBP':
+				if ($rawData === false)
+				{
+					header('Content-type: image/webp');
+				}
+				imagewebp($this->oldImage);
+				break;
 		}
 
 		return $this;
@@ -1348,6 +1357,9 @@ class GD extends PHPThumb
 				break;
 			case 'image/png':
 				$this->format = 'PNG';
+				break;
+			case 'image/webp':
+				$this->format = 'WEBP';
 				break;
 			default:
 				throw new \Exception("Image format not supported: " . $mimeType);
