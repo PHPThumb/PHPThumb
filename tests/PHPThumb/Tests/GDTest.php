@@ -1,20 +1,19 @@
 <?php
-
 namespace PHPThumb\Tests;
 
 use PHPThumb\GD;
 
-class GDTest extends \PHPUnit_Framework_TestCase
+class GDTest extends \PHPUnit\Framework\TestCase
 {
     protected $gif;
     protected $jpg;
     protected $png;
 
-    protected function setUp()
+    protected function setUp():void
     {
-        $this->gif = new GD(__DIR__ . '/../resources/test.gif');
-        $this->jpg = new GD(__DIR__ . '/../resources/test.jpg');
-        $this->png = new GD(__DIR__ . '/../resources/test.png');
+        $this->gif = new GD(__DIR__ . '/../../resources/test.gif');
+        $this->jpg = new GD(__DIR__ . '/../../resources/test.jpg');
+        $this->png = new GD(__DIR__ . '/../../resources/test.png');
     }
 
     public function testLoadFileTypes()
@@ -30,7 +29,7 @@ class GDTest extends \PHPUnit_Framework_TestCase
      */
     public function testImageDestroy()
     {
-        $testImage = new GD(__DIR__ . '/../resources/test.gif');
+        $testImage = new GD(__DIR__ . '/../../resources/test.gif');
         unset($testImage);
         self::assertSame(false, isset($testImage));
     }

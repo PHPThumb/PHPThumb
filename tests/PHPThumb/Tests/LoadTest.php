@@ -4,13 +4,13 @@ namespace PHPThumb\Tests;
 
 use PHPThumb\GD;
 
-class LoadTest extends \PHPUnit_Framework_TestCase
+class LoadTest extends \PHPUnit\Framework\TestCase
 {
     protected $thumb;
 
-    protected function setUp()
+    protected function setUp():void
     {
-        $this->thumb = new GD(__DIR__ . '/../resources/test.jpg');
+        $this->thumb = new GD(__DIR__ . '/../../resources/test.jpg');
     }
 
     public function testLoadFile()
@@ -33,7 +33,7 @@ class LoadTest extends \PHPUnit_Framework_TestCase
             'interlace'             => null), $this->thumb->getOptions());
 
         self::assertSame('JPG', $this->thumb->getFormat());
-        self::assertSame(__DIR__ . '/../resources/test.jpg', $this->thumb->getFileName());
+        self::assertSame(__DIR__ . '/../../resources/test.jpg', $this->thumb->getFileName());
     }
 
     public function testSetFormat()
@@ -50,15 +50,13 @@ class LoadTest extends \PHPUnit_Framework_TestCase
 
     public function testLoadExternalImage()
     {
-        /* $gravatarThumb = new GD('https://en.gravatar.com/userimage/1132703/2ccbcfbea4a1b3b8d955c1e7746b882b.jpg');
-        self::assertSame(true, $gravatarThumb->getIsRemoteImage()); */
+        $gravatarThumb = new GD('https://en.gravatar.com/userimage/1132703/2ccbcfbea4a1b3b8d955c1e7746b882b.jpg');
+        self::assertSame(true, $gravatarThumb->getIsRemoteImage());
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
     public function testNonexistentFile()
     {
+        $this->expectException(\InvalidArgumentException::class);
         $madeupThumb = new GD('nosuchimage.jpg');
     }
 }

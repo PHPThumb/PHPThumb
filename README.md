@@ -1,4 +1,4 @@
-[![Build Status](https://secure.travis-ci.org/masterexploder/PHPThumb.png?branch=master)](http://travis-ci.org/masterexploder/PHPThumb)
+[![Build Status](https://travis-ci.com/marioquartz/PHPThumb.png?branch=master)](http://travis-ci.com/marioquartz/PHPThumb)
 
 # PHP Thumb
 
