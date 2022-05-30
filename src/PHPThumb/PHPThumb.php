@@ -52,7 +52,7 @@ abstract class PHPThumb
      * @param array $options
      * @param array $plugins
      */
-    public function __construct($fileName, array $options = array(), array $plugins = array())
+    public function __construct($fileName, array $options = [], array $plugins = [])
     {
         $this->fileName    = $fileName;
         $this->remoteImage = false;
@@ -66,10 +66,10 @@ abstract class PHPThumb
         $this->plugins = $plugins;
     }
 
-    abstract public function setOptions(array $options = array());
+    abstract public function setOptions(array $options = []);
 
     /**
-     * Check the provided filename/url. If it is a url, validate that it is properly
+     * Check the provided filename/url. If it is an url, validate that it is properly
      * formatted. If it is a file, check to make sure that it actually exists on
      * the filesystem.
      *

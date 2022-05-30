@@ -85,7 +85,7 @@ class GD extends PHPThumb
      * @param array $plugins
      * @throws \Exception
      */
-    public function __construct($fileName, array $options = array(), array $plugins = array())
+    public function __construct($fileName, array $options = [], array $plugins = [])
     {
         parent::__construct($fileName, $options, $plugins);
 
@@ -108,10 +108,10 @@ class GD extends PHPThumb
                 break;
         }
 
-        $this->currentDimensions = array (
+        $this->currentDimensions = [
             'width'  => imagesx($this->oldImage),
             'height' => imagesy($this->oldImage)
-        );
+		];
     }
 
     public function __destruct()
@@ -132,7 +132,7 @@ class GD extends PHPThumb
      * @param array $color
      * @return GD
      */
-    public function pad($width, $height, array $color = array(255, 255, 255)): GD
+    public function pad($width, $height, array $color = [255, 255, 255]): GD
     {
         // no resize - woohoo!
         if ($width == $this->currentDimensions['width'] && $height == $this->currentDimensions['height']) {
@@ -346,7 +346,7 @@ class GD extends PHPThumb
      * A percentage of 50 would crop the image to the center which would be the same as using
      * adaptiveResizeQuadrant() with $quadrant = 'C', or even the original adaptiveResize()
      *
-     * A percentage of 100 would crop the image to the image all the way to the right, etc, etc.
+     * A percentage of 100 would crop the image to the image all the way to the right, etc., etc.
      * Note that you can use any percentage between 1 and 100.
      *
      * For Portrait images:
@@ -453,7 +453,7 @@ class GD extends PHPThumb
      * +---+---+---+
      *
      * Note that if your image is Landscape and you choose either of the Top or Bottom quadrants (which won't
-     * make sence since only the Left and Right would be available, then the Center quadrant will be used
+     * make sense since only the Left and Right would be available, then the Center quadrant will be used
      * to crop. This would have exactly the same result as using adaptiveResize().
      * The same goes if your image is portrait and you choose either the Left or Right quadrants.
      *
@@ -821,7 +821,7 @@ class GD extends PHPThumb
      */
     public function save(string $fileName, string $format = null): GD
     {
-        $validFormats = array('GIF', 'JPG', 'PNG');
+        $validFormats = ['GIF', 'JPG', 'PNG'];
         $format = ($format !== null) ? strtoupper($format) : $this->format;
 
         if (!in_array($format, $validFormats)) {
@@ -874,20 +874,20 @@ class GD extends PHPThumb
      * @param array $options
      * @return GD
      */
-    public function setOptions(array $options = array()): GD
+    public function setOptions(array $options = []): GD
     {
         // we've yet to init the default options, so create them here
         if (sizeof($this->options) == 0) {
-            $defaultOptions = array(
+            $defaultOptions = [
                 'resizeUp'              => false,
                 'jpegQuality'           => 100,
                 'correctPermissions'    => false,
                 'preserveAlpha'         => true,
-                'alphaMaskColor'        => array (255, 255, 255),
+                'alphaMaskColor'        => [255, 255, 255],
                 'preserveTransparency'  => true,
-                'transparencyMaskColor' => array (0, 0, 0),
+                'transparencyMaskColor' => [0, 0, 0],
                 'interlace'             => null
-            );
+			];
         } else { // otherwise, let's use what we've got already
             $defaultOptions = $this->options;
         }
@@ -1079,10 +1079,10 @@ class GD extends PHPThumb
         $newWidthPercentage = (100 * $this->maxWidth) / $width;
         $newHeight          = ($height * $newWidthPercentage) / 100;
 
-        return array(
+        return [
             'newWidth'  => $this->maxWidth,
             'newHeight' => intval($newHeight)
-        );
+		];
     }
 
     /**
@@ -1097,10 +1097,10 @@ class GD extends PHPThumb
         $newHeightPercentage = (100 * $this->maxHeight) / $height;
         $newWidth            = ($width * $newHeightPercentage) / 100;
 
-        return array(
+        return [
             'newWidth'  => ceil($newWidth),
             'newHeight' => ceil($this->maxHeight)
-        );
+		];
     }
 
     /**
@@ -1115,10 +1115,10 @@ class GD extends PHPThumb
         $newWidth  = ($width * $this->percent) / 100;
         $newHeight = ($height * $this->percent) / 100;
 
-        return array(
+        return [
             'newWidth'  => ceil($newWidth),
             'newHeight' => ceil($newHeight)
-        );
+		];
     }
 
     /**
@@ -1131,10 +1131,10 @@ class GD extends PHPThumb
      */
     protected function calcImageSize(int $width, int $height)
     {
-        $newSize = array(
+        $newSize = [
             'newWidth'  => $width,
             'newHeight' => $height
-        );
+		];
 
         if ($this->maxWidth > 0) {
             $newSize = $this->calcWidth($width, $height);
