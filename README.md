@@ -1,5 +1,3 @@
-[![Build Status](https://travis-ci.com/marioquartz/PHPThumb.png?branch=master)](http://travis-ci.com/marioquartz/PHPThumb)
-
 # PHP Thumb
 
 ## NOTICE -
