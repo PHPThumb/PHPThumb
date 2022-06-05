@@ -108,11 +108,12 @@ class GD extends PHPThumb
 				break;
 			case 'WEBP':
 				$this->oldImage = imagecreatefromwebp($this->fileName);
+				break;
 		}
 
 		$this->currentDimensions = [
-			'width'  => imagesx($this->oldImage),
-			'height' => imagesy($this->oldImage)
+			'width'		=> imagesx($this->oldImage),
+			'height'	=> imagesy($this->oldImage)
 		];
 	}
 
@@ -902,7 +903,7 @@ class GD extends PHPThumb
 	 */
 	public function save(string $fileName, string $format = null): GD
 	{
-		$validFormats = ['GIF', 'JPG', 'PNG'];
+		$validFormats = ['GIF', 'JPG', 'PNG', 'WEBP'];
 		$format = ($format !== null) ? strtoupper($format) : $this->format;
 
 		if (!in_array($format, $validFormats))
@@ -949,6 +950,9 @@ class GD extends PHPThumb
 				break;
 			case 'PNG':
 				imagepng($this->oldImage, $fileName);
+				break;
+			case 'WEBP':
+				imagewebp($this->oldImage, $fileName);
 				break;
 		}
 
@@ -1388,19 +1392,21 @@ class GD extends PHPThumb
 			case 'PNG':
 				$isCompatible = $gdInfo[$this->format . ' Support'];
 				break;
+			case 'WEBP':
+				$isCompatible = $gdInfo['WebP Support'];
+				break;
 			default:
 				$isCompatible = false;
 		}
 
+		$suffix		= strtolower($this->format);
+		$compiled	= function_exists('image' . $suffix) && function_exists('imagecreatefrom' . $suffix);
+
+		$isCompatible = $isCompatible & $compiled;
+
 		if (!$isCompatible)
 		{
-			// one last check for "JPEG" instead
-			$isCompatible = $gdInfo['JPEG Support'];
-
-			if (!$isCompatible)
-			{
-				throw new \Exception('Your GD installation does not support ' . $this->format . ' image types');
-			}
+			throw new \Exception('Your GD installation does not support ' . $this->format . ' image types');
 		}
 	}
 
