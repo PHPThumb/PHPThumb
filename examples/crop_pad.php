@@ -26,6 +26,6 @@
 require_once '../vendor/autoload.php';
 
 $thumb = new PHPThumb\GD(__DIR__ .'/../tests/resources/test.jpg');
-$thumb->pad(1024, 350, array(192, 212, 45));
+$thumb->pad(1024, 350, [192, 212, 45]);
 
 $thumb->show();
