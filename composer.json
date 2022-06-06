@@ -1,30 +1,31 @@
 {
-    "name": "phpthumb/phpthumb",
-    "type": "library",
-    "license": "MIT",
-    "description": "A library for manipulating images in PHP.",
-    "keywords": ["image", "resize", "rotate"],
-    "require": {
-        "php": ">=7.4",
-      "ext-gd": "*",
-        "phpunit/phpunit": "^9.5"
-    },
-    "homepage": "https://github.com/masterexploder/PHPThumb",
-    "authors": [
-        {
-            "name": "Ian Selby",
-            "email": "ianrselby@gmail.com"
-        },
-        {
-            "name": "Jarrod Nettles",
-            "email": "jarrod.nettles@icloud.com"
-        }
-    ],
-
-    "autoload": {
-        "psr-0": {
-            "PHPThumb": "src",
-            "PHPThumb\\Tests": "tests"
-        }
-    }
+	"name" : "phpthumb/phpthumb",
+	"type" : "library",
+	"license" : "MIT",
+	"description" : "A library for manipulating images in PHP.",
+	"keywords" : [
+		"image",
+		"resize",
+		"rotate"
+	],
+	"require" : {
+		"php" : ">=7.4",
+		"ext-gd" : "*",
+		"phpunit/phpunit" : "^9.5"
+	},
+	"homepage" : "https://github.com/PHPThumb/PHPThumb",
+	"authors" : [{
+			"name" : "Ian Selby",
+			"email" : "ianrselby@gmail.com"
+		}, {
+			"name" : "Jarrod Nettles",
+			"email" : "jarrod.nettles@icloud.com"
+		}
+	],
+	"autoload" : {
+		"psr-0" : {
+			"PHPThumb" : "src",
+			"PHPThumb\\Tests" : "tests"
+		}
+	}
 }
