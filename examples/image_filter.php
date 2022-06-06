@@ -6,15 +6,15 @@
  *
  * PHP Version 5 with GD 2.0+
  * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
- * Copyright (c) 2009, Ian Selby/Gen X Design
+ * Copyright (c) 2014, Marcel Domke
  *
- * Author(s): Ian Selby <ianrselby@gmail.com>
+ * Author(s): Marcel Domke <contact@marcel-domke.de>
  *
  * Licensed under the MIT License
  * Redistributions of files must retain the above copyright notice.
  *
- * @author Ian Selby <ianrselby@gmail.com>
- * @copyright Copyright (c) 2009 Gen X Design
+ * @author Marcel Domke <marcel-domke.de>
+ * @copyright Copyright (c) 2014 Marcel Domke
  * @link https://github.com/PHPThumb/PHPThumb
  * @license http://www.opensource.org/licenses/mit-license.php The MIT License
  * @version 3.0
@@ -26,5 +26,8 @@
 require_once '../vendor/autoload.php';
 
 $thumb = new PHPThumb\GD(__DIR__ .'/../tests/resources/test.jpg');
-$thumb->cropFromCenter(200, 100);
+// for more informations visit http://www.php.net/manual/de/function.imagefilter.php
+$thumb->imageFilter(IMG_FILTER_COLORIZE, 160, 20, 20);
+// or e.g. $thumb->imageFilter(IMG_FILTER_GRAYSCALE);
+
 $thumb->show();
