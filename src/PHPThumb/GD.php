@@ -96,8 +96,7 @@ class GD extends PHPThumb
 			case 'GIF':
 				$this->oldImage = imagecreatefromgif($this->fileName);
 				break;
-			case 'JFIF':
-			case 'JPG':
+			case 'JPEG':
 				$this->oldImage = imagecreatefromjpeg($this->fileName);
 				break;
 			case 'PNG':
@@ -841,7 +840,7 @@ class GD extends PHPThumb
 				}
 				imagegif($this->oldImage);
 				break;
-			case 'JPG':
+			case 'JPEG':
 				if ($rawData === false)
 				{
 					header('Content-type: image/jpeg');
@@ -896,13 +895,13 @@ class GD extends PHPThumb
 	 * \RuntimeException is thrown.
 	 *
 	 * @param string $fileName The full path and filename of the image to save
-	 * @param string|null $format   The format to save the image in (optional, must be one of [GIF,JPG,PNG]
+	 * @param string|null $format   The format to save the image in (optional, must be one of [GIF, JPEG, JPG, PNG, WEBP]
 	 * @return GD
 	 */
 	public function save(string $fileName, string $format = null): GD
 	{
-		$validFormats = ['GIF', 'JPG', 'PNG', 'WEBP'];
-		$format = ($format !== null) ? strtoupper($format) : $this->format;
+		$validFormats	= ['GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
+		$format			= ($format !== null) ? strtoupper($format) : $this->format;
 
 		if (!in_array($format, $validFormats))
 		{
@@ -943,6 +942,7 @@ class GD extends PHPThumb
 			case 'GIF':
 				imagegif($this->oldImage, $fileName);
 				break;
+			case 'JPEG':
 			case 'JPG':
 				imagejpeg($this->oldImage, $fileName, $this->options['jpegQuality']);
 				break;
@@ -1358,7 +1358,7 @@ class GD extends PHPThumb
 				$this->format = 'GIF';
 				break;
 			case 'image/jpeg':
-				$this->format = 'JPG';
+				$this->format = 'JPEG';
 				break;
 			case 'image/png':
 				$this->format = 'PNG';
@@ -1384,7 +1384,7 @@ class GD extends PHPThumb
 			case 'GIF':
 				$isCompatible = $gdInfo['GIF Create Support'];
 				break;
-			case 'JPG':
+			case 'JPEG':
 				$isCompatible = isset($gdInfo['JPG Support']) || isset($gdInfo['JPEG Support']);
 				break;
 			case 'PNG':
@@ -1397,10 +1397,12 @@ class GD extends PHPThumb
 				$isCompatible = false;
 		}
 
-		$suffix		= strtolower($this->format);
-		$compiled	= function_exists('image' . $suffix) && function_exists('imagecreatefrom' . $suffix);
+		$suffix = strtolower($this->format);
 
-		$isCompatible = $isCompatible & $compiled;
+		$isCompatible =
+			   function_exists('image' . $suffix)
+			&& function_exists('imagecreatefrom' . $suffix)
+			&& $isCompatible;
 
 		if (!$isCompatible)
 		{
