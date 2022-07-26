@@ -285,12 +285,12 @@ class GD extends PHPThumb
 
 		if ($width == 0)
 		{
-			$width = ($height * $this->currentDimensions['width']) / $this->currentDimensions['height'];
+			$width = intval(($height * $this->currentDimensions['width']) / $this->currentDimensions['height']);
 		}
 
 		if ($height == 0)
 		{
-			$height = ($width * $this->currentDimensions['height']) / $this->currentDimensions['width'];
+			$height = intval(($width * $this->currentDimensions['height']) / $this->currentDimensions['width']);
 		}
 
 		// make sure we're not exceeding our image size if we're not supposed to
