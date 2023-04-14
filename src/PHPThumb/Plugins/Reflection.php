@@ -10,7 +10,7 @@ use PHPThumb\PluginInterface;
  *
  * This file contains the plugin definition for the GD Reflection Lib for PHP Thumb
  *
- * PHP Version 7 with GD 2.2+
+ * PHP Version 8 with GD 2.2+
  * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
  * Copyright (c) 2009, Ian Selby/Gen X Design
  *
@@ -62,7 +62,7 @@ class Reflection implements PluginInterface
 	 * @param PHPThumb $phpthumb
 	 * @return PHPThumb
 	 */
-	public function execute(PHPThumb $phpthumb):PHPThumb
+	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
 		$this->currentDimensions	= $phpthumb->getCurrentDimensions();
 		$this->workingImage			= $phpthumb->getWorkingImage();
@@ -249,11 +249,11 @@ class Reflection implements PluginInterface
 	protected function hex2rgb ($hex, $asString = false)
 	{
 		// strip off any leading #
-		if (0 === strpos($hex, '#'))
+		if (str_starts_with($hex, '#'))
 		{
 			$hex = substr($hex, 1);
 		}
-		elseif (0 === strpos($hex, '&H'))
+		else if (str_starts_with($hex, '&H'))
 		{
 			$hex = substr($hex, 2);
 		}

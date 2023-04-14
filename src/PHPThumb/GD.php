@@ -92,23 +92,14 @@ class GD extends PHPThumb
 		$this->determineFormat();
 		$this->verifyFormatCompatiblity();
 
-		switch ($this->format) {
-			case 'GIF':
-				$this->oldImage = imagecreatefromgif($this->fileName);
-				break;
-			case 'JPEG':
-				$this->oldImage = imagecreatefromjpeg($this->fileName);
-				break;
-			case 'PNG':
-				$this->oldImage = imagecreatefrompng($this->fileName);
-				break;
-			case 'STRING':
-				$this->oldImage = imagecreatefromstring($this->fileName);
-				break;
-			case 'WEBP':
-				$this->oldImage = imagecreatefromwebp($this->fileName);
-				break;
-		}
+		$this->oldImage = match ($this->format) {
+			'AVIF'		=> imagecreatefromavif		($this->fileName),
+			'GIF'		=> imagecreatefromgif		($this->fileName),
+			'JPEG'		=> imagecreatefromjpeg		($this->fileName),
+			'PNG'		=> imagecreatefrompng		($this->fileName),
+			'STRING'	=> imagecreatefromstring	($this->fileName),
+			'WEBP'		=> imagecreatefromwebp		($this->fileName),
+		};
 
 		$this->currentDimensions = [
 			'width'		=> imagesx($this->oldImage),
@@ -542,34 +533,20 @@ class GD extends PHPThumb
 		if ($this->currentDimensions['width'] > $this->maxWidth)
 		{
 			// Image is landscape
-			switch ($quadrant) {
-				case 'L':
-					$cropX = 0;
-					break;
-				case 'R':
-					$cropX = intval(($this->currentDimensions['width'] - $this->maxWidth));
-					break;
-				case 'C':
-				default:
-					$cropX = intval(($this->currentDimensions['width'] - $this->maxWidth) / 2);
-					break;
-			}
+			$cropX = match ($quadrant) {
+				'L'		=> 0,
+				'R'		=> intval(($this->currentDimensions['width'] - $this->maxWidth)),
+				default	=> intval(($this->currentDimensions['width'] - $this->maxWidth) / 2),
+			};
 		}
 		else if ($this->currentDimensions['height'] > $this->maxHeight)
 		{
 			// Image is portrait
-			switch ($quadrant) {
-				case 'T':
-					$cropY = 0;
-					break;
-				case 'B':
-					$cropY = intval(($this->currentDimensions['height'] - $this->maxHeight));
-					break;
-				case 'C':
-				default:
-					$cropY = intval(($this->currentDimensions['height'] - $this->maxHeight) / 2);
-					break;
-			}
+			$cropY = match ($quadrant) {
+				'T'		=> 0,
+				'B'		=> intval(($this->currentDimensions['height'] - $this->maxHeight)),
+				default	=> intval(($this->currentDimensions['height'] - $this->maxHeight) / 2),
+			};
 		}
 
 		imagecopyresampled(
@@ -626,8 +603,8 @@ class GD extends PHPThumb
 			$cropHeight = $cropWidth;
 		}
 
-		$cropWidth	= ($this->currentDimensions['width'] < $cropWidth) ? $this->currentDimensions['width'] : $cropWidth;
-		$cropHeight	= ($this->currentDimensions['height'] < $cropHeight) ? $this->currentDimensions['height'] : $cropHeight;
+		$cropWidth	= ($this->currentDimensions['width'] < $cropWidth)		? $this->currentDimensions['width']		: $cropWidth;
+		$cropHeight	= ($this->currentDimensions['height'] < $cropHeight)	? $this->currentDimensions['height']	: $cropHeight;
 
 		$cropX = intval(($this->currentDimensions['width'] - $cropWidth) / 2);
 		$cropY = intval(($this->currentDimensions['height'] - $cropHeight) / 2);
@@ -833,6 +810,13 @@ class GD extends PHPThumb
 		}
 
 		switch ($this->format) {
+			case 'AVIF':
+				if ($rawData === false)
+				{
+					header('Content-type: image/avif');
+				}
+				imageavif($this->oldImage);
+				break;
 			case 'GIF':
 				if ($rawData === false)
 				{
@@ -895,12 +879,12 @@ class GD extends PHPThumb
 	 * \RuntimeException is thrown.
 	 *
 	 * @param string $fileName The full path and filename of the image to save
-	 * @param string|null $format   The format to save the image in (optional, must be one of [GIF, JPEG, JPG, PNG, WEBP]
+	 * @param string|null $format   The format to save the image in (optional, must be one of [AVIF, GIF, JPEG, JPG, PNG, WEBP]
 	 * @return GD
 	 */
 	public function save(string $fileName, string $format = null): GD
 	{
-		$validFormats	= ['GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
+		$validFormats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
 		$format			= ($format !== null) ? strtoupper($format) : $this->format;
 
 		if (!in_array($format, $validFormats))
@@ -939,6 +923,9 @@ class GD extends PHPThumb
 		}
 
 		switch ($format) {
+			case 'AVIF':
+				imageavif($this->oldImage, $fileName);
+				break;
 			case 'GIF':
 				imagegif($this->oldImage, $fileName);
 				break;
@@ -1353,22 +1340,14 @@ class GD extends PHPThumb
 
 		$mimeType = $formatInfo['mime'] ?? null;
 
-		switch ($mimeType) {
-			case 'image/gif':
-				$this->format = 'GIF';
-				break;
-			case 'image/jpeg':
-				$this->format = 'JPEG';
-				break;
-			case 'image/png':
-				$this->format = 'PNG';
-				break;
-			case 'image/webp':
-				$this->format = 'WEBP';
-				break;
-			default:
-				throw new \Exception('Image format not supported: ' . $mimeType);
-		}
+		$this->format = match ($mimeType) {
+			'image/avif'	=> 'AVIF',
+			'image/gif'		=> 'GIF',
+			'image/jpeg'	=> 'JPEG',
+			'image/png'		=> 'PNG',
+			'image/webp'	=> 'WEBP',
+			default			=> throw new \Exception('Image format not supported: ' . $mimeType),
+		};
 	}
 
 	/**
@@ -1380,22 +1359,14 @@ class GD extends PHPThumb
 	{
 		$gdInfo = gd_info();
 
-		switch ($this->format) {
-			case 'GIF':
-				$isCompatible = $gdInfo['GIF Create Support'];
-				break;
-			case 'JPEG':
-				$isCompatible = isset($gdInfo['JPG Support']) || isset($gdInfo['JPEG Support']);
-				break;
-			case 'PNG':
-				$isCompatible = $gdInfo[$this->format . ' Support'];
-				break;
-			case 'WEBP':
-				$isCompatible = $gdInfo['WebP Support'];
-				break;
-			default:
-				$isCompatible = false;
-		}
+		$isCompatible = match ($this->format) {
+			'AVIF'	=> $gdInfo[$this->format . ' Support'],
+			'GIF'	=> $gdInfo['GIF Create Support'],
+			'JPEG'	=> isset($gdInfo['JPG Support']) || isset($gdInfo['JPEG Support']),
+			'PNG'	=> $gdInfo[$this->format . ' Support'],
+			'WEBP'	=> $gdInfo['WebP Support'],
+			default	=> false,
+		};
 
 		$suffix = strtolower($this->format);
 

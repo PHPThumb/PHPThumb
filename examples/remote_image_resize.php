@@ -4,7 +4,7 @@
  *
  * This file contains example usage for the PHP Thumb Library
  *
- * PHP Version 7 with GD 2.2+
+ * PHP Version 8 with GD 2.2+
  * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
  * Copyright (c) 2009, Ian Selby/Gen X Design
  *
@@ -25,6 +25,6 @@
 
 require_once '../vendor/autoload.php';
 
-$thumb = new PHPThumb\GD('https://github.com/PHPThumb/PHPThumb/wp-content/themes/phpthumb/images/header_bg.png');
+$thumb = new PHPThumb\GD('https://github.com/PHPThumb/PHPThumb/blob/master/examples/test.jpg');
 $thumb->resize(200, 200);
 $thumb->show();
