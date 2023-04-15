@@ -21,7 +21,7 @@ use PHPThumb\PluginInterface;
  *
  * @author Ian Selby <ianrselby@gmail.com>
  * @copyright Copyright (c) 2009 Gen X Design
- * @link https://github.com/masterexploder/PHPThumb
+ * @link https://github.com/PHPThumb/PHPThumb
  * @license http://www.opensource.org/licenses/mit-license.php The MIT License
  * @version 3.0
  * @package PhpThumb
@@ -216,7 +216,7 @@ class Reflection implements PluginInterface
 	 * Flips the image vertically
 	 *
 	 */
-	protected function imageFlipVertical ()
+	protected function imageFlipVertical (): void
 	{
 		$x_i = imagesx($this->workingImage);
 		$y_i = imagesy($this->workingImage);
@@ -242,11 +242,11 @@ class Reflection implements PluginInterface
 	/**
 	 * Converts a hex color to rgb tuples
 	 *
-	 * @return mixed
 	 * @param  string $hex
-	 * @param  bool   $asString
+	 * @param bool $asString
+	 * @return mixed
 	 */
-	protected function hex2rgb ($hex, $asString = false)
+	protected function hex2rgb (string $hex, bool $asString = false): mixed
 	{
 		// strip off any leading #
 		if (str_starts_with($hex, '#'))
