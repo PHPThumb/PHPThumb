@@ -4,7 +4,7 @@
  *
  * This file contains example usage for the PHP Thumb Library
  *
- * PHP Version 8 with GD 2.2+
+ * PHP Version 8 with GD 2.3+
  * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
  * Copyright (c) 2014, Marcel Domke
  *

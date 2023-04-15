@@ -5,25 +5,28 @@ use PHPThumb\GD;
 
 class GDTest extends \PHPUnit\Framework\TestCase
 {
+	protected $avif;
 	protected $gif;
 	protected $jpg;
 	protected $png;
 	protected $webp;
 
-	protected function setUp():void
+	protected function setUp(): void
 	{
-		$this->gif = new GD(__DIR__ . '/../../resources/test.gif');
-		$this->jpg = new GD(__DIR__ . '/../../resources/test.jpg');
-		$this->png = new GD(__DIR__ . '/../../resources/test.png');
-		$this->webp = new GD(__DIR__.'/../../resources/test.webp');
+		$this->avif	= new GD(__DIR__ . '/../../resources/test.avif');
+		$this->gif	= new GD(__DIR__ . '/../../resources/test.gif');
+		$this->jpg	= new GD(__DIR__ . '/../../resources/test.jpg');
+		$this->png	= new GD(__DIR__ . '/../../resources/test.png');
+		$this->webp	= new GD(__DIR__ . '/../../resources/test.webp');
 	}
 
 	public function testLoadFileTypes()
 	{
-		self::assertSame('GIF', $this->gif->getFormat());
-		self::assertSame('JPG', $this->jpg->getFormat());
-		self::assertSame('PNG', $this->png->getFormat());
-		self::assertSame('WEBP', $this->webp->getFormat());
+		self::assertSame('AVIF',	$this->avif->getFormat());
+		self::assertSame('GIF',		$this->gif->getFormat());
+		self::assertSame('JPG',		$this->jpg->getFormat());
+		self::assertSame('PNG',		$this->png->getFormat());
+		self::assertSame('WEBP',	$this->webp->getFormat());
 	}
 
 	/**
