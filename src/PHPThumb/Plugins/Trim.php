@@ -2,6 +2,8 @@
 
 namespace PHPThumb\Plugins;
 
+use InvalidArgumentException;
+use PHPThumb\GD;
 use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
 
@@ -40,20 +42,17 @@ class Trim implements PluginInterface
 	/**
 	 * @var array Contains trimmed color in array of RGB parts
 	 */
-	protected $color;
+	protected array $color;
 
 	/**
 	 * @var array Contains array of sides which will be trim
 	 */
-	protected $sides;
+	protected array $sides;
 
 	/**
 	 * Validate whether RGB color parts array valid or not
-	 *
-	 * @param $colors
-	 * @return bool
 	 */
-	private function validateColor($colors)
+	private function validateColor(array $colors): bool
 	{
 		if (!(is_array($colors) && count($colors) == 3))
 		{
@@ -73,11 +72,8 @@ class Trim implements PluginInterface
 
 	/**
 	 * Validates whether sides is valid or not
-	 *
-	 * @param $sidesString
-	 * @return bool
 	 */
-	private function validateSides($sidesString)
+	private function validateSides(string $sidesString): bool
 	{
 		$sides = str_split($sidesString);
 
@@ -99,21 +95,18 @@ class Trim implements PluginInterface
 
 	/**
 	 * Trim constructor
-	 *
-	 * @param array $color
-	 * @param string $sides
 	 */
-	public function __construct($color = array(255, 255, 255), $sides = 'TBLR')
+	public function __construct(array $color = [255, 255, 255], string $sides = 'TBLR')
 	{
 		// make sure our arguments are valid
 		if (!$this->validateColor($color))
 		{
-			throw new \InvalidArgumentException('Color must be array of RGB color model parts');
+			throw new InvalidArgumentException('Color must be array of RGB color model parts');
 		}
 
 		if (!$this->validateSides($sides))
 		{
-			throw new \InvalidArgumentException('Sides must be string with T, B, L, and/or R coordinates');
+			throw new InvalidArgumentException('Sides must be string with T, B, L, and/or R coordinates');
 		}
 
 		$this->color	= $color;
@@ -122,22 +115,15 @@ class Trim implements PluginInterface
 
 	/**
 	 * Converts rgb parts array to integer representation
-	 *
-	 * @param array $rgb
-	 * @return number
 	 */
-	private function rgb2int(array $rgb)
+	private function rgb2int(array $rgb): float|int
 	{
 		return hexdec(
-			sprintf("%02x%02x%02x", $rgb[0], $rgb[1], $rgb[2])
+			sprintf('%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2])
 		);
 	}
 
-	/**
-	 * @param \PHPThumb\GD $phpthumb
-	 * @return \PHPThumb\GD
-	 */
-	public function execute($phpthumb): PHPThumb
+	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
 		$currentImage		= $phpthumb->getOldImage();
 		$currentDimensions	= $phpthumb->getCurrentDimensions();

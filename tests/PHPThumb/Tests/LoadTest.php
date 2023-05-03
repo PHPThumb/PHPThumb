@@ -2,11 +2,13 @@
 
 namespace PHPThumb\Tests;
 
+use InvalidArgumentException;
 use PHPThumb\GD;
+use PHPUnit\Framework\TestCase;
 
-class LoadTest extends \PHPUnit\Framework\TestCase
+class LoadTest extends TestCase
 {
-	protected $thumb;
+	protected GD $thumb;
 
 	protected function setUp():void
 	{
@@ -58,7 +60,7 @@ class LoadTest extends \PHPUnit\Framework\TestCase
 
 	public function testNonexistentFile()
 	{
-		$this->expectException(\InvalidArgumentException::class);
+		$this->expectException(InvalidArgumentException::class);
 		$madeupThumb = new GD('nosuchimage.jpg');
 	}
 }

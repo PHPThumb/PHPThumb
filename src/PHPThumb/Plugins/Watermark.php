@@ -38,22 +38,22 @@ use PHPThumb\PluginInterface;
  */
 class Watermark implements PluginInterface
 {
-	protected $wm;
-	protected $position;
-	protected $opacity;
-	protected $offsetX;
-	protected $offsetY;
+	protected GD $wm;
+	protected string $position;
+	protected int $opacity;
+	protected int $offsetX;
+	protected int $offsetY;
 
 	/**
 	 * Watermark constructor.
 	 *
-	 * @param \PHPThumb\GD $wm Watermark image as \PHPThumb\GD instance
+	 * @param GD $wm Watermark image as \PHPThumb\GD instance
 	 * @param string $position Can be: left/west, right/east, center for the x-axis and top/north/upper, bottom/lower/south, center for the y-axis
 	 * @param int $opacity Opacity of the watermark in percent, 0 = total transparent, 100 = total opaque
 	 * @param int $offsetX Offset on the x-axis. can be negative to set an offset to the left
 	 * @param int $offsetY Offset on the y-axis. can be negative to set an offset to the top
 	 */
-	public function __construct(GD $wm, $position = 'center', $opacity = 100, $offsetX = 0, $offsetY = 0)
+	public function __construct(GD $wm, string $position = 'center', int $opacity = 100, int $offsetX = 0, int $offsetY = 0)
 	{
 		$this->wm		= $wm;
 		$this->position	= $position;
@@ -63,8 +63,8 @@ class Watermark implements PluginInterface
 	}
 
 	/**
-	 * @param \PHPThumb\GD $phpthumb
-	 * @return \PHPThumb\GD
+	 * @param GD $phpthumb
+	 * @return GD
 	 */
 	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
@@ -116,7 +116,7 @@ class Watermark implements PluginInterface
 	 * Function copied from: http://www.php.net/manual/en/function.imagecopymerge.php#92787
 	 * Does the same as "imagecopymerge" but preserves the alpha-channel
 	 */
-	private function imageCopyMergeAlpha(&$dst_im, &$src_im, $dst_x, $dst_y, $src_x, $src_y, $src_w, $src_h, $pct)
+	private function imageCopyMergeAlpha(&$dst_im, &$src_im, $dst_x, $dst_y, $src_x, $src_y, $src_w, $src_h, $pct): void
 	{
 		$cut = imagecreatetruecolor($src_w, $src_h);
 		imagecopy($cut, $dst_im, 0, 0, $dst_x, $dst_y, $src_w, $src_h);

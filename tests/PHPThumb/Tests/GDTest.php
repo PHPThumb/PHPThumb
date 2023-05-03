@@ -2,14 +2,15 @@
 namespace PHPThumb\Tests;
 
 use PHPThumb\GD;
+use PHPUnit\Framework\TestCase;
 
-class GDTest extends \PHPUnit\Framework\TestCase
+class GDTest extends TestCase
 {
-	protected $avif;
-	protected $gif;
-	protected $jpg;
-	protected $png;
-	protected $webp;
+	protected GD $avif;
+	protected GD $gif;
+	protected GD $jpg;
+	protected GD $png;
+	protected GD $webp;
 
 	protected function setUp(): void
 	{
