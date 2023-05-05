@@ -73,9 +73,9 @@ class Trim implements PluginInterface
 	/**
 	 * Validates whether sides is valid or not
 	 */
-	private function validateSides(string $sidesString): bool
+	private function validateSides(string $sides_string): bool
 	{
-		$sides = str_split($sidesString);
+		$sides = str_split($sides_string);
 
 		if (count($sides) > 4 || count($sides) == 0)
 		{
@@ -84,7 +84,7 @@ class Trim implements PluginInterface
 
 		foreach($sides as $side)
 		{
-			if (!in_array($side, array('T', 'B', 'L', 'R')))
+			if (!in_array($side, ['T', 'B', 'L', 'R']))
 			{
 				return false;
 			}
@@ -125,24 +125,24 @@ class Trim implements PluginInterface
 
 	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
-		$currentImage		= $phpthumb->getOldImage();
-		$currentDimensions	= $phpthumb->getCurrentDimensions();
+		$current_image		= $phpthumb->getOldImage();
+		$current_dimensions	= $phpthumb->getCurrentDimensions();
 
-		$borderTop		= 0;
-		$borderBottom	= 0;
-		$borderLeft		= 0;
-		$borderRight	= 0;
+		$border_top		= 0;
+		$border_bottom	= 0;
+		$border_left	= 0;
+		$border_right	= 0;
 
 		if (in_array('T', $this->sides))
 		{
-			for (; $borderTop < $currentDimensions['height']; ++$borderTop)
+			for (; $border_top < $current_dimensions['height']; ++$border_top)
 			{
-				for ($x = 0; $x < $currentDimensions['width']; ++$x)
+				for ($x = 0; $x < $current_dimensions['width']; ++$x)
 				{
 					if (imagecolorat(
-							$currentImage,
+							$current_image,
 							$x,
-							$borderTop
+							$border_top
 						) != $this->rgb2int($this->color))
 					{
 						break 2;
@@ -153,14 +153,14 @@ class Trim implements PluginInterface
 
 		if (in_array('B', $this->sides))
 		{
-			for (; $borderBottom < $currentDimensions['height']; ++$borderBottom)
+			for (; $border_bottom < $current_dimensions['height']; ++$border_bottom)
 			{
-				for ($x = 0; $x < $currentDimensions['width']; ++$x)
+				for ($x = 0; $x < $current_dimensions['width']; ++$x)
 				{
 					if (imagecolorat(
-							$currentImage,
+							$current_image,
 							$x,
-							$currentDimensions['height'] - $borderBottom - 1
+							$current_dimensions['height'] - $border_bottom - 1
 						) != $this->rgb2int($this->color))
 					{
 						break 2;
@@ -171,11 +171,13 @@ class Trim implements PluginInterface
 
 		if (in_array('L', $this->sides))
 		{
-			for (; $borderLeft < $currentDimensions['width']; ++$borderLeft) {
-				for ($y = 0; $y < $currentDimensions['height']; ++$y) {
+			for (; $border_left < $current_dimensions['width']; ++$border_left)
+			{
+				for ($y = 0; $y < $current_dimensions['height']; ++$y)
+				{
 					if (imagecolorat(
-							$currentImage,
-							$borderLeft,
+							$current_image,
+							$border_left,
 							$y
 						) != $this->rgb2int($this->color))
 					{
@@ -187,13 +189,13 @@ class Trim implements PluginInterface
 
 		if (in_array('R', $this->sides))
 		{
-			for (; $borderRight < $currentDimensions['width']; ++$borderRight)
+			for (; $border_right < $current_dimensions['width']; ++$border_right)
 			{
-				for ($y = 0; $y < $currentDimensions['height']; ++$y)
+				for ($y = 0; $y < $current_dimensions['height']; ++$y)
 				{
 					if (imagecolorat(
-							$currentImage,
-							$currentDimensions['width'] - $borderRight - 1,
+							$current_image,
+							$current_dimensions['width'] - $border_right - 1,
 							$y
 						) != $this->rgb2int($this->color))
 					{
@@ -203,30 +205,30 @@ class Trim implements PluginInterface
 			}
 		}
 
-		$newWidth	= $currentDimensions['width'] - ($borderLeft + $borderRight);
-		$newHeight	= $currentDimensions['height'] - ($borderTop + $borderBottom);
+		$new_width	= $current_dimensions['width'] - ($border_left + $border_right);
+		$new_height	= $current_dimensions['height'] - ($border_top + $border_bottom);
 
-		$newImage = imagecreatetruecolor(
-			$newWidth,
-			$newHeight
+		$new_image = imagecreatetruecolor(
+			$new_width,
+			$new_height
 		);
 
 		imagecopy(
-			$newImage,
-			$currentImage,
+			$new_image,
+			$current_image,
 			0,
 			0,
-			$borderLeft,
-			$borderTop,
-			$currentDimensions['width'],
-			$currentDimensions['height']
+			$border_left,
+			$border_top,
+			$current_dimensions['width'],
+			$current_dimensions['height']
 		);
 
-		$phpthumb->setOldImage($newImage);
+		$phpthumb->setOldImage($new_image);
 
 		$phpthumb->setCurrentDimensions([
-			'width'		=> $newWidth,
-			'height'	=> $newHeight
+			'width'		=> $new_width,
+			'height'	=> $new_height
 		]);
 
 		return $phpthumb;
