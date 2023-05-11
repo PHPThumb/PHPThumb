@@ -9,8 +9,8 @@
 		"rotate"
 	],
 	"require" : {
-		"php" : ">=8.0",
-		"ext-gd" : "*"
+		"php" : ">=8.2",
+		"ext-gd" : ">=2.3.2"
 	},
 	"require-dev" : {
 		"phpunit/phpunit" : "^9.5"
