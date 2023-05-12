@@ -13,7 +13,7 @@ use PHPThumb\PluginInterface;
 	 *
 	 * PHP Version 8 with GD 2.3+
 	 * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
-	 * Copyright (c) 2009, Ian Selby/Gen X Design
+	 * Copyright (c) 2009, Ian Selby
 	 *
 	 * Author(s): Ian Selby <ianrselby@gmail.com>
 	 *
