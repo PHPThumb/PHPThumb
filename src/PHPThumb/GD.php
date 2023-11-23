@@ -713,7 +713,7 @@ class GD extends PHPThumb
 				{
 					header('Content-type: image/avif');
 				}
-				imageavif($this->old_image);
+				imageavif($this->old_image, null, $this->options['avifQuality']););
 				break;
 			case 'GIF':
 				if ($raw_data === false)
@@ -742,7 +742,7 @@ class GD extends PHPThumb
 				{
 					header('Content-type: image/webp');
 				}
-				imagewebp($this->old_image);
+				imagewebp($this->old_image, null, $this->options['webpQuality']););
 				break;
 		}
 
@@ -818,11 +818,11 @@ class GD extends PHPThumb
 		}
 
 		$save = match ($format) {
-			'AVIF'			=> imageavif	($this->old_image, $file_name),
+			'AVIF'			=> imageavif	($this->old_image, $file_name, $this->options['avifQuality']),),
 			'GIF'			=> imagegif		($this->old_image, $file_name),
 			'JPEG', 'JPG'	=> imagejpeg	($this->old_image, $file_name, $this->options['jpegQuality']),
 			'PNG'			=> imagepng		($this->old_image, $file_name),
-			'WEBP'			=> imagewebp	($this->old_image, $file_name),
+			'WEBP'			=> imagewebp	($this->old_image, $file_name, $this->options['webpQuality']),),
 		};
 
 		return $this;
@@ -842,7 +842,9 @@ class GD extends PHPThumb
 		{
 			$default_options = [
 				'resizeUp'				=> false,
+				'avifQuality'			=> 100,
 				'jpegQuality'			=> 100,
+				'webpQuality'			=> 100,
 				'correctPermissions'	=> false,
 				'preserveAlpha'			=> true,
 				'alphaMaskColor'		=> [255, 255, 255],
