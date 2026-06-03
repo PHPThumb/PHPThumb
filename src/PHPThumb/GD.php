@@ -967,7 +967,7 @@ class GD extends PHPThumb
 	 *
 	 * @see GD
 	 */
-	public function setOldImage(object $old_image): GD
+	public function setOldImage(GdImage $old_image): static
 	{
 		$this->old_image = $old_image;
 
@@ -989,7 +989,7 @@ class GD extends PHPThumb
 	 *
 	 * @see GD
 	 */
-	public function setWorkingImage(object $working_image): GD
+	public function setWorkingImage(GdImage $working_image): static
 	{
 		$this->working_image = $working_image;
 
