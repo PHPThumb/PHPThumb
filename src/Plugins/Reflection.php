@@ -103,7 +103,6 @@ class Reflection implements PluginInterface
 			);
 
 		if ($color_to_paint === false) {
-			imagedestroy($working_image);
 			throw new RuntimeException('Failed to allocate color for reflection');
 		}
 
@@ -241,8 +240,6 @@ class Reflection implements PluginInterface
 				for ($y = 0; $y < $y_i; $y++) {
 					imagecopy($image, $tmp, 0, $y_i - $y - 1, 0, $y, $x_i, 1);
 				}
-
-				imagedestroy($tmp);
 			}
 		}
 	}
