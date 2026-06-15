@@ -26,7 +26,7 @@
 	],
 	"autoload" : {
 		"psr-4" : {
-			"PHPThumb\\" : "src/PHPThumb/"
+			"PHPThumb\\" : "src/"
 		}
 	},
 	"autoload-dev" : {
