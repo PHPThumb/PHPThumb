@@ -6,213 +6,251 @@ use InvalidArgumentException;
 use PHPThumb\GD;
 use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
-
-	/**
-	 * GD Trim Lib Plugin Definition File
-	 *
-	 * This file contains the plugin definition for the GD Trim Lib for PHP Thumb
-	 *
-	 * PHP Version 8 with GD 2.3+
-	 * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
-	 * Copyright (c) 2009, Ian Selby
-	 *
-	 * Author(s): Ian Selby <ianrselby@gmail.com>
-	 *
-	 * Licensed under the MIT License
-	 * Redistributions of files must retain the above copyright notice.
-	 *
-	 * @author Oleg Sherbakov <holdmann@yandex.ru>
-	 * @copyright Copyright (c) 2016
-	 * @license http://www.opensource.org/licenses/mit-license.php The MIT License
-	 * @version 1.0
-	 * @package PhpThumb
-	 * @filesource
-	 */
+use RuntimeException;
 
 /**
- * GD Trim Lib Plugin
+ * GD Trim Lib Plugin Definition File
  *
- * This plugin allows you to trim unnecessary single color borders from any side of image
+ * This file contains the plugin definition for the GD Trim Lib for PHP Thumb
  *
+ * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
+ * Copyright (c) 2016, Oleg Sherbakov
+ *
+ * Licensed under the MIT License
+ *
+ * @author Oleg Sherbakov <holdmann@yandex.ru>
+ * @copyright Copyright (c) 2016
+ * @license http://www.opensource.org/licenses/mit-license.php The MIT License
+ * @version 1.0
  * @package PhpThumb
  * @subpackage Plugins
  */
 class Trim implements PluginInterface
 {
 	/**
-	 * @var array Contains trimmed color in array of RGB parts
+	 * @var array<int, int> RGB color values [R, G, B]
 	 */
 	protected array $color;
 
 	/**
-	 * @var array Contains array of sides which will be trim
+	 * @var array<string> Sides to trim (T, B, L, R)
 	 */
 	protected array $sides;
 
 	/**
-	 * Validate whether RGB color parts array valid or not
-	 */
-	private function validateColor(array $colors): bool
-	{
-		if (!(is_array($colors) && count($colors) == 3))
-		{
-			return false;
-		}
-
-		foreach($colors as $color)
-		{
-			if ($color < 0 || $color > 255)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	/**
-	 * Validates whether sides is valid or not
-	 */
-	private function validateSides(string $sides_string): bool
-	{
-		$sides = str_split($sides_string);
-
-		if (count($sides) > 4 || count($sides) == 0)
-		{
-			return false;
-		}
-
-		foreach($sides as $side)
-		{
-			if (!in_array($side, ['T', 'B', 'L', 'R']))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	/**
 	 * Trim constructor
+	 *
+	 * @param array<int, int> $color RGB color to trim as array [R, G, B] (0-255 each)
+	 * @param string $sides Sides to trim: 'T' (top), 'B' (bottom), 'L' (left), 'R' (right)
+	 * @throws InvalidArgumentException If color or sides are invalid
 	 */
 	public function __construct(array $color = [255, 255, 255], string $sides = 'TBLR')
 	{
-		// make sure our arguments are valid
-		if (!$this->validateColor($color))
-		{
-			throw new InvalidArgumentException('Color must be array of RGB color model parts');
+		if (!$this->validateColor($color)) {
+			throw new InvalidArgumentException(
+				'Color must be an array of RGB color model parts [R, G, B] where each value is 0-255'
+				);
 		}
 
-		if (!$this->validateSides($sides))
-		{
-			throw new InvalidArgumentException('Sides must be string with T, B, L, and/or R coordinates');
+		if (!$this->validateSides($sides)) {
+			throw new InvalidArgumentException(
+				'Sides must be a string containing any combination of T, B, L, and R'
+				);
 		}
 
-		$this->color	= $color;
-		$this->sides	= str_split($sides);
+		$this->color  = $color;
+		$this->sides  = str_split($sides);
 	}
 
 	/**
-	 * Converts rgb parts array to integer representation
+	 * Validates whether RGB color array is valid
+	 *
+	 * @param array<int, int|float> $colors Color array to validate
+	 * @return bool True if valid, false otherwise
 	 */
-	private function rgb2int(array $rgb): float|int
+	protected function validateColor(array $colors): bool
 	{
-		return hexdec(
-			sprintf('%02x%02x%02x', $rgb[0], $rgb[1], $rgb[2])
-		);
+		if (count($colors) !== 3) {
+			return false;
+		}
+
+		foreach ($colors as $color) {
+			if (!is_numeric($color) || $color < 0 || $color > 255) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
+	/**
+	 * Validates whether sides string is valid
+	 *
+	 * @param string $sides_string Sides string to validate
+	 * @return bool True if valid, false otherwise
+	 */
+	protected function validateSides(string $sides_string): bool
+	{
+		$sides = str_split($sides_string);
+
+		if (count($sides) === 0 || count($sides) > 4) {
+			return false;
+		}
+
+		$valid_sides = ['T', 'B', 'L', 'R'];
+
+		foreach ($sides as $side) {
+			if (!in_array($side, $valid_sides, true)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Converts RGB array to 24-bit integer color value
+	 *
+	 * @param array<int, int|float> $rgb RGB array [R, G, B]
+	 * @return int 24-bit color value
+	 */
+	protected function rgbToInt(array $rgb): int
+	{
+		return ((int)$rgb[0] << 16) | ((int)$rgb[1] << 8) | (int)$rgb[2];
+	}
+
+	/**
+	 * Executes the trim operation
+	 */
 	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
-		$current_image		= $phpthumb->getOldImage();
-		$current_dimensions	= $phpthumb->getCurrentDimensions();
+		$current_image    = $phpthumb->getOldImage();
+		$current_dimensions = $phpthumb->getCurrentDimensions();
 
-		$border_top		= 0;
-		$border_bottom	= 0;
-		$border_left	= 0;
-		$border_right	= 0;
+		$border_top    = 0;
+		$border_bottom = 0;
+		$border_left   = 0;
+		$border_right  = 0;
 
-		if (in_array('T', $this->sides))
-		{
-			for (; $border_top < $current_dimensions['height']; ++$border_top)
-			{
-				for ($x = 0; $x < $current_dimensions['width']; ++$x)
-				{
-					if (imagecolorat(
-							$current_image,
-							$x,
-							$border_top
-						) != $this->rgb2int($this->color))
-					{
-						break 2;
+		$target_color = $this->rgbToInt($this->color);
+		$width        = $current_dimensions['width'];
+		$height       = $current_dimensions['height'];
+
+		// Detect top border
+		if (in_array('T', $this->sides, true)) {
+			for (; $border_top < $height; $border_top++) {
+				for ($x = 0; $x < $width; $x++) {
+					$pixel_color = imagecolorat($current_image, $x, $border_top);
+
+					// Handle alpha transparency for comparison
+					$alpha = ($pixel_color >> 24) & 0x7F;
+					if ($alpha > 0 && $this->color === [255, 255, 255]) {
+						continue;
 					}
+
+					if (($pixel_color & 0xFFFFFF) !== $target_color) {
+						break;
+					}
+				}
+
+				// Only break if we found a non-matching pixel
+				if ($x < $width) {
+					break;
 				}
 			}
 		}
 
-		if (in_array('B', $this->sides))
-		{
-			for (; $border_bottom < $current_dimensions['height']; ++$border_bottom)
-			{
-				for ($x = 0; $x < $current_dimensions['width']; ++$x)
-				{
-					if (imagecolorat(
-							$current_image,
-							$x,
-							$current_dimensions['height'] - $border_bottom - 1
-						) != $this->rgb2int($this->color))
-					{
-						break 2;
+		// Detect bottom border
+		if (in_array('B', $this->sides, true)) {
+			for (; $border_bottom < $height; $border_bottom++) {
+				$y = $height - $border_bottom - 1;
+
+				for ($x = 0; $x < $width; $x++) {
+					$pixel_color = imagecolorat($current_image, $x, $y);
+
+					$alpha = ($pixel_color >> 24) & 0x7F;
+					if ($alpha > 0 && $this->color === [255, 255, 255]) {
+						continue;
 					}
+
+					if (($pixel_color & 0xFFFFFF) !== $target_color) {
+						break;
+					}
+				}
+
+				if ($x < $width) {
+					break;
 				}
 			}
 		}
 
-		if (in_array('L', $this->sides))
-		{
-			for (; $border_left < $current_dimensions['width']; ++$border_left)
-			{
-				for ($y = 0; $y < $current_dimensions['height']; ++$y)
-				{
-					if (imagecolorat(
-							$current_image,
-							$border_left,
-							$y
-						) != $this->rgb2int($this->color))
-					{
-						break 2;
+		// Detect left border
+		if (in_array('L', $this->sides, true)) {
+			for (; $border_left < $width; $border_left++) {
+				for ($y = 0; $y < $height; $y++) {
+					$pixel_color = imagecolorat($current_image, $border_left, $y);
+
+					$alpha = ($pixel_color >> 24) & 0x7F;
+					if ($alpha > 0 && $this->color === [255, 255, 255]) {
+						continue;
 					}
+
+					if (($pixel_color & 0xFFFFFF) !== $target_color) {
+						break;
+					}
+				}
+
+				if ($y < $height) {
+					break;
 				}
 			}
 		}
 
-		if (in_array('R', $this->sides))
-		{
-			for (; $border_right < $current_dimensions['width']; ++$border_right)
-			{
-				for ($y = 0; $y < $current_dimensions['height']; ++$y)
-				{
-					if (imagecolorat(
-							$current_image,
-							$current_dimensions['width'] - $border_right - 1,
-							$y
-						) != $this->rgb2int($this->color))
-					{
-						break 2;
+		// Detect right border
+		if (in_array('R', $this->sides, true)) {
+			for (; $border_right < $width; $border_right++) {
+				$x = $width - $border_right - 1;
+
+				for ($y = 0; $y < $height; $y++) {
+					$pixel_color = imagecolorat($current_image, $x, $y);
+
+					$alpha = ($pixel_color >> 24) & 0x7F;
+					if ($alpha > 0 && $this->color === [255, 255, 255]) {
+						continue;
 					}
+
+					if (($pixel_color & 0xFFFFFF) !== $target_color) {
+						break;
+					}
+				}
+
+				if ($y < $height) {
+					break;
 				}
 			}
 		}
 
-		$new_width	= $current_dimensions['width'] - ($border_left + $border_right);
-		$new_height	= $current_dimensions['height'] - ($border_top + $border_bottom);
+		// Calculate new dimensions
+		$new_width  = $width - $border_left - $border_right;
+		$new_height = $height - $border_top - $border_bottom;
 
-		$new_image = imagecreatetruecolor(
-			$new_width,
-			$new_height
-		);
+		// Ensure we have something to show
+		if ($new_width <= 0 || $new_height <= 0) {
+			throw new RuntimeException('Trim operation would result in empty image');
+		}
 
+		// Create new trimmed image
+		$new_image = imagecreatetruecolor($new_width, $new_height);
+
+		if ($new_image === false) {
+			throw new RuntimeException('Failed to create trimmed image');
+		}
+
+		// Preserve transparency
+		imagealphablending($new_image, false);
+		imagesavealpha($new_image, true);
+
+		// Copy the trimmed portion
 		imagecopy(
 			$new_image,
 			$current_image,
@@ -220,15 +258,15 @@ class Trim implements PluginInterface
 			0,
 			$border_left,
 			$border_top,
-			$current_dimensions['width'],
-			$current_dimensions['height']
-		);
+			$new_width,
+			$new_height
+			);
 
+		// Update PHPThumb
 		$phpthumb->setOldImage($new_image);
-
 		$phpthumb->setCurrentDimensions([
-			'width'		=> $new_width,
-			'height'	=> $new_height
+			'width'  => $new_width,
+			'height' => $new_height,
 		]);
 
 		return $phpthumb;

@@ -2,125 +2,278 @@
 
 namespace PHPThumb\Plugins;
 
-use PHPThumb\PHPThumb;
+use InvalidArgumentException;
 use PHPThumb\GD;
+use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
 
-	/**
-	 * GD Watermark Lib Plugin Definition File
-	 *
-	 * This file contains the plugin definition for the GD Watermark Lib for PHP Thumb
-	 *
-	 * PHP Version 8 with GD 2.3+
-	 * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
-	 * Copyright (c) 2009, Ian Selby
-	 *
-	 * Author(s): Ian Selby <ianrselby@gmail.com>
-	 *
-	 * Licensed under the MIT License
-	 * Redistributions of files must retain the above copyright notice.
-	 *
-	 * @author Oleg Sherbakov <holdmann@yandex.ru>
-	 * @copyright Copyright (c) 2016
-	 * @license http://www.opensource.org/licenses/mit-license.php The MIT License
-	 * @version 1.0
-	 * @package PhpThumb
-	 * @filesource
-	 */
-
 /**
- * GD Watermark Lib Plugin
+ * Watermark Lib Plugin Definition File
  *
- * This plugin allows you to add watermark above the image
+ * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
+ * Copyright (c) 2016, Oleg Sherbakov
  *
+ * Licensed under the MIT License
+ *
+ * @author Oleg Sherbakov <holdmann@yandex.ru>
+ * @copyright Copyright (c) 2016
+ * @license http://www.opensource.org/licenses/mit-license.php The MIT License
+ * @version 1.0
  * @package PhpThumb
  * @subpackage Plugins
  */
 class Watermark implements PluginInterface
 {
-	protected GD $wm;
+	/**
+	 * @var GD|Imagick The watermark image instance
+	 */
+	protected $wm;
+
+	/**
+	 * @var string Position for the watermark
+	 */
 	protected string $position;
+
+	/**
+	 * @var int Opacity of the watermark (0-100)
+	 */
 	protected int $opacity;
+
+	/**
+	 * @var int X-axis offset
+	 */
 	protected int $offset_x;
+
+	/**
+	 * @var int Y-axis offset
+	 */
 	protected int $offset_y;
 
 	/**
-	 * Watermark constructor.
+	 * Watermark constructor
 	 *
-	 * @param GD $wm Watermark image as \PHPThumb\GD instance
-	 * @param string $position Can be: left/west, right/east, center for the x-axis and top/north/upper, bottom/lower/south, center for the y-axis
-	 * @param int $opacity Opacity of the watermark in percent, 0 = total transparent, 100 = total opaque
-	 * @param int $offset_x Offset on the x-axis. can be negative to set an offset to the left
-	 * @param int $offset_y Offset on the y-axis. can be negative to set an offset to the top
+	 * @param GD|Imagick $wm Watermark image as \PHPThumb\GD or \PHPThumb\Imagick instance
+	 * @param string $position Position: combinations of left/west/right/east for X
+	 *                         and top/north/upper/bottom/south/lower for Y
+	 * @param int $opacity Opacity of the watermark in percent (0 = transparent, 100 = opaque)
+	 * @param int $offset_x Horizontal offset (can be negative)
+	 * @param int $offset_y Vertical offset (can be negative)
+	 * @throws InvalidArgumentException If watermark is not GD or Imagick instance
 	 */
-	public function __construct(GD $wm, string $position = 'center', int $opacity = 100, int $offset_x = 0, int $offset_y = 0)
-	{
-		$this->wm		= $wm;
-		$this->position	= $position;
-		$this->opacity	= $opacity;
-		$this->offset_x	= $offset_x;
-		$this->offset_y	= $offset_y;
+	public function __construct(
+		GD|Imagick $wm,
+		string $position = 'center',
+		int $opacity = 100,
+		int $offset_x = 0,
+		int $offset_y = 0
+		) {
+			if (!$wm instanceof GD && !$wm instanceof Imagick) {
+				throw new InvalidArgumentException(
+					'Watermark must be an instance of \PHPThumb\GD or \PHPThumb\Imagick'
+					);
+			}
+
+			$this->wm        = $wm;
+			$this->position = $position;
+			$this->opacity  = max(0, min(100, $opacity));
+			$this->offset_x = $offset_x;
+			$this->offset_y = $offset_y;
 	}
 
 	/**
-	 * @param GD $phpthumb
-	 * @return GD
+	 * Executes the watermark operation
 	 */
 	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
-		$current_dimensions		= $phpthumb->getCurrentDimensions();
-		$watermark_dimensions	= $this->wm->getCurrentDimensions();
-
-		$watermark_position_x	= $this->offset_x;
-		$watermark_position_y	= $this->offset_y;
-
-		if (preg_match('/right|east/i', $this->position))
-		{
-			$watermark_position_x += $current_dimensions['width'] - $watermark_dimensions['width'];
-		}
-		else if (!preg_match('/left|west/i', $this->position))
-		{
-			$watermark_position_x += intval($current_dimensions['width']/2 - $watermark_dimensions['width']/2);
+		if ($phpthumb instanceof GD) {
+			return $this->executeGD($phpthumb);
 		}
 
-		if (preg_match('/bottom|lower|south/i', $this->position))
-		{
-			$watermark_position_y += $current_dimensions['height'] - $watermark_dimensions['height'];
-		}
-		else if (!preg_match('/upper|top|north/i', $this->position))
-		{
-			$watermark_position_y += intval($current_dimensions['height']/2 - $watermark_dimensions['height']/2);
+		if ($phpthumb instanceof Imagick) {
+			return $this->executeImagick($phpthumb);
 		}
 
-		$working_image		= $phpthumb->getWorkingImage();
-		$watermark_image	= ($this->wm->getWorkingImage() ?: $this->wm->getOldImage());
+		throw new InvalidArgumentException('Unsupported PHPThumb instance type');
+	}
 
-		$this->imageCopyMergeAlpha(
-			$working_image,
-			$watermark_image,
-			$watermark_position_x,
-			$watermark_position_y,
-			0,
-			0,
-			$watermark_dimensions['width'],
-			$watermark_dimensions['height'],
-			$this->opacity
-		);
+	/**
+	 * Execute watermark for GD-based PHPThumb
+	 */
+	protected function executeGD(GD $phpthumb): PHPThumb
+	{
+		$current_dimensions    = $phpthumb->getCurrentDimensions();
+		$watermark_dimensions = $this->wm->getCurrentDimensions();
 
-		$phpthumb->setWorkingImage($working_image);
+		[$watermark_position_x, $watermark_position_y] = $this->calculatePosition(
+			$current_dimensions,
+			$watermark_dimensions
+			);
+
+		$base_image       = $phpthumb->getOldImage();
+		$watermark_image  = $this->wm->getOldImage();
+
+		if ($base_image === null) {
+			throw new \RuntimeException('Base image is not initialized');
+		}
+
+		if ($watermark_image === null) {
+			throw new \RuntimeException('Watermark image is not initialized');
+		}
+
+		// Create a fresh canvas so we don't mutate the original
+		$output_image = imagecreatetruecolor(
+			$current_dimensions['width'],
+			$current_dimensions['height']
+			);
+
+		if ($output_image === false) {
+			throw new \RuntimeException('Failed to create canvas for watermarking');
+		}
+
+		// Preserve alpha for PNG
+		if ($phpthumb->getFormat() === 'PNG') {
+			imagealphablending($output_image, false);
+			imagesavealpha($output_image, true);
+		}
+
+		// Copy the base image onto the new canvas
+		imagecopy(
+			$output_image,
+			$base_image,
+			0, 0, 0, 0,
+			$current_dimensions['width'],
+			$current_dimensions['height']
+			);
+
+		// Apply the watermark
+		if ($this->opacity < 100) {
+			$this->imageCopyMergeAlpha(
+				$output_image,
+				$watermark_image,
+				$watermark_position_x,
+				$watermark_position_y,
+				0,
+				0,
+				$watermark_dimensions['width'],
+				$watermark_dimensions['height'],
+				$this->opacity
+				);
+		} else {
+			imagecopy(
+				$output_image,
+				$watermark_image,
+				$watermark_position_x,
+				$watermark_position_y,
+				0,
+				0,
+				$watermark_dimensions['width'],
+				$watermark_dimensions['height']
+				);
+		}
+
+		// Replace old_image - this is what show()/save() output
+		$phpthumb->setOldImage($output_image);
 
 		return $phpthumb;
 	}
 
 	/**
-	 * Function copied from: http://www.php.net/manual/en/function.imagecopymerge.php#92787
-	 * Does the same as "imagecopymerge" but preserves the alpha-channel
+	 * Execute watermark for Imagick-based PHPThumb
 	 */
-	private function imageCopyMergeAlpha(&$dst_im, &$src_im, $dst_x, $dst_y, $src_x, $src_y, $src_w, $src_h, $pct): void
+	protected function executeImagick(Imagick $phpthumb): PHPThumb
 	{
-		$cut = imagecreatetruecolor($src_w, $src_h);
-		imagecopy($cut, $dst_im, 0, 0, $dst_x, $dst_y, $src_w, $src_h);
-		imagecopy($cut, $src_im, 0, 0, $src_x, $src_y, $src_w, $src_h);
-		imagecopymerge($dst_im, $cut, $dst_x, $dst_y, $src_x, $src_y, $src_w, $src_h, $pct);
+		$current_dimensions    = $phpthumb->getCurrentDimensions();
+		$watermark_dimensions = $this->wm->getCurrentDimensions();
+
+		[$watermark_position_x, $watermark_position_y] = $this->calculatePosition(
+			$current_dimensions,
+			$watermark_dimensions
+			);
+
+		$base_image = $phpthumb->getOldImage();
+		$watermark  = clone $this->wm->getOldImage();
+
+		if ($base_image === null || $watermark === null) {
+			throw new \RuntimeException('Image is not initialized');
+		}
+
+		// Apply opacity to watermark
+		if ($this->opacity < 100) {
+			$watermark->setImageOpacity($this->opacity / 100);
+		}
+
+		// Composite watermark onto base image
+		$base_image->compositeImage(
+			$watermark,
+			\Imagick::COMPOSITE_DEFAULT,
+			$watermark_position_x,
+			$watermark_position_y
+			);
+
+		// old_image is already updated via reference
+		$watermark->clear();
+		$watermark->destroy();
+
+		return $phpthumb;
+	}
+
+	/**
+	 * Calculate watermark position based on current dimensions and position string
+	 *
+	 * @param array<string, int> $current_dimensions Current image dimensions
+	 * @param array<string, int> $watermark_dimensions Watermark dimensions
+	 * @return array<int> [x, y] position coordinates
+	 */
+	protected function calculatePosition(array $current_dimensions, array $watermark_dimensions): array
+	{
+		$watermark_position_x = $this->offset_x;
+		$watermark_position_y = $this->offset_y;
+
+		// Horizontal position
+		if (preg_match('/\b(right|east)\b/i', $this->position)) {
+			$watermark_position_x += $current_dimensions['width'] - $watermark_dimensions['width'];
+		} elseif (!preg_match('/\b(left|west)\b/i', $this->position)) {
+			$watermark_position_x += intval(
+				($current_dimensions['width'] - $watermark_dimensions['width']) / 2
+				);
+		}
+
+		// Vertical position
+		if (preg_match('/\b(bottom|lower|south)\b/i', $this->position)) {
+			$watermark_position_y += $current_dimensions['height'] - $watermark_dimensions['height'];
+		} elseif (!preg_match('/\b(upper|top|north)\b/i', $this->position)) {
+			$watermark_position_y += intval(
+				($current_dimensions['height'] - $watermark_dimensions['height']) / 2
+				);
+		}
+
+		return [$watermark_position_x, $watermark_position_y];
+	}
+
+	/**
+	 * Copy image with alpha blending (for GD)
+	 *
+	 * Based on: http://www.php.net/manual/en/function.imagecopymerge.php#92787
+	 */
+	protected function imageCopyMergeAlpha(
+		$dst_im,
+		$src_im,
+		int $dst_x,
+		int $dst_y,
+		int $src_x,
+		int $src_y,
+		int $src_w,
+		int $src_h,
+		int $pct
+		): void {
+			$cut = imagecreatetruecolor($src_w, $src_h);
+
+			if ($cut === false) {
+				return;
+			}
+
+			imagecopy($cut, $dst_im, 0, 0, $dst_x, $dst_y, $src_w, $src_h);
+			imagecopy($cut, $src_im, 0, 0, $src_x, $src_y, $src_w, $src_h);
+			imagecopymerge($dst_im, $cut, $dst_x, $dst_y, $src_x, $src_y, $src_w, $src_h, $pct);
 	}
 }

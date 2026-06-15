@@ -95,7 +95,7 @@ class GD extends PHPThumb
 			// Could not decode image
 			throw new Exception('The image file is invalid, corrupted, or the required ' . $this->format . ' codec is not available in the GD library.');
 		}
-		
+
 		$this->current_dimensions = [
 			'width'		=> imagesx($this->old_image),
 			'height'	=> imagesy($this->old_image)
@@ -967,7 +967,7 @@ class GD extends PHPThumb
 	 *
 	 * @see GD
 	 */
-	public function setOldImage(GdImage $old_image): static
+	public function setOldImage(\GdImage $old_image): static
 	{
 		$this->old_image = $old_image;
 
@@ -989,7 +989,7 @@ class GD extends PHPThumb
 	 *
 	 * @see GD
 	 */
-	public function setWorkingImage(GdImage $working_image): static
+	public function setWorkingImage(\GdImage $working_image): static
 	{
 		$this->working_image = $working_image;
 

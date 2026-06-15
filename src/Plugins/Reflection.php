@@ -2,6 +2,7 @@
 
 namespace PHPThumb\Plugins;
 
+use InvalidArgumentException;
 use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
 
@@ -10,255 +11,270 @@ use PHPThumb\PluginInterface;
  *
  * This file contains the plugin definition for the GD Reflection Lib for PHP Thumb
  *
- * PHP Version 8 with GD 2.3+
  * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
  * Copyright (c) 2009, Ian Selby
  *
- * Author(s): Ian Selby <ianrselby@gmail.com>
- *
  * Licensed under the MIT License
- * Redistributions of files must retain the above copyright notice.
  *
  * @author Ian Selby <ianrselby@gmail.com>
  * @copyright Copyright (c) 2009 Ian Selby
- * @link https://github.com/PHPThumb/PHPThumb
  * @license http://www.opensource.org/licenses/mit-license.php The MIT License
  * @version 3.0
- * @package PhpThumb
- * @filesource
- */
-
-/**
- * GD Reflection Lib Plugin
- *
- * This plugin allows you to create those fun Apple(tm)-style reflections in your images
- *
  * @package PhpThumb
  * @subpackage Plugins
  */
 class Reflection implements PluginInterface
 {
-	protected array $current_dimensions;
-	protected $working_image;
-	protected object $new_image;
-	protected array $options;
-
+	/**
+	 * @var int Reflection percentage (0-100)
+	 */
 	protected int $percent;
-	protected $reflection;
-	protected $white;
-	protected $border;
-	protected $border_color;
 
-	public function __construct($percent, $reflection, $white, $border, $border_color)
-	{
-		$this->percent		= $percent;
-		$this->reflection	= $reflection;
-		$this->white		= $white;
-		$this->border		= $border;
-		$this->border_color	= $border_color;
+	/**
+	 * @var int Reflection height percentage (0-100)
+	 */
+	protected int $reflection;
+
+	/**
+	 * @var int White transparency for reflection gradient (0-100)
+	 */
+	protected int $white;
+
+	/**
+	 * @var bool Whether to add a border
+	 */
+	protected bool $border;
+
+	/**
+	 * @var string Border color in hex format
+	 */
+	protected string $border_color;
+
+	/**
+	 * @param int $percent How much of the original image to include in reflection (0-100)
+	 * @param int $reflection Height of the reflection as a percentage of the original (0-100)
+	 * @param int $white White transparency for the gradient (0-100)
+	 * @param bool $border Whether to add a border
+	 * @param string $border_color Hex color for the border (e.g., '#FFFFFF')
+	 */
+	public function __construct(
+		int $percent = 50,
+		int $reflection = 50,
+		int $white = 80,
+		bool $border = false,
+		string $border_color = '#FFFFFF'
+		) {
+			$this->percent      = $percent;
+			$this->reflection   = $reflection;
+			$this->white        = $white;
+			$this->border       = $border;
+			$this->border_color = $border_color;
 	}
 
+	/**
+	 * Executes the reflection effect on the image
+	 */
 	public function execute(PHPThumb $phpthumb): PHPThumb
 	{
-		$this->current_dimensions	= $phpthumb->getCurrentDimensions();
-		$this->working_image		= $phpthumb->getWorkingImage();
-		$this->new_image			= $phpthumb->getOldImage();
-		$this->options				= $phpthumb->getOptions();
+		$current_dimensions = $phpthumb->getCurrentDimensions();
+		$options             = $phpthumb->getOptions();
 
-		$width						= $this->current_dimensions['width'];
-		$height						= $this->current_dimensions['height'];
-		$reflection_height			= intval($height * ($this->reflection / 100));
-		$new_height					= $height + $reflection_height;
-		$reflected_part				= $height * ($this->percent / 100);
+		$width              = $current_dimensions['width'];
+		$height             = $current_dimensions['height'];
+		$reflection_height  = intval($height * ($this->reflection / 100));
+		$new_height         = $height + $reflection_height;
+		$reflected_part     = $height * ($this->percent / 100);
 
-		$this->working_image = imagecreatetruecolor($width, $new_height);
+		// Create the reflection image
+		$working_image = imagecreatetruecolor($width, $new_height);
 
-		imagealphablending($this->working_image, true);
+		if ($working_image === false) {
+			throw new RuntimeException('Failed to create reflection image');
+		}
+
+		imagealphablending($working_image, true);
 
 		$color_to_paint = imagecolorallocatealpha(
-			$this->working_image,
+			$working_image,
 			255,
 			255,
 			255,
 			0
-		);
+			);
+
+		if ($color_to_paint === false) {
+			imagedestroy($working_image);
+			throw new RuntimeException('Failed to allocate color for reflection');
+		}
 
 		imagefilledrectangle(
-			$this->working_image,
+			$working_image,
 			0,
 			0,
 			$width,
 			$new_height,
 			$color_to_paint
-		);
+			);
 
+		// Get the current image
+		$current_image = $phpthumb->getOldImage();
+
+		// Copy the portion to be reflected
 		imagecopyresampled(
-			$this->working_image,
-			$this->new_image,
+			$working_image,
+			$current_image,
 			0,
 			0,
 			0,
-			$reflected_part,
+			intval($reflected_part),
 			$width,
 			$reflection_height,
 			$width,
-			($height - $reflected_part)
-		);
+			intval($height - $reflected_part)
+			);
 
-		$this->imageFlipVertical();
+		// Flip the reflection vertically
+		$this->imageFlipVertical($working_image);
 
+		// Copy the original image on top
 		imagecopy(
-			$this->working_image,
-			$this->new_image,
+			$working_image,
+			$current_image,
 			0,
 			0,
 			0,
 			0,
 			$width,
 			$height
-		);
-
-		imagealphablending($this->working_image, true);
-
-		for ($i = 0; $i < $reflection_height; $i++)
-		{
-			$color_to_paint = imagecolorallocatealpha(
-				$this->working_image,
-				255,
-				255,
-				255,
-				($i / $reflection_height * -1 + 1) * $this->white
 			);
+
+		imagealphablending($working_image, true);
+
+		// Apply gradient fade to reflection
+		for ($i = 0; $i < $reflection_height; $i++) {
+			$alpha = ($i / $reflection_height) * $this->white;
+			$alpha = intval($alpha);
+
+			$color_to_paint = imagecolorallocatealpha(
+				$working_image,
+				255,
+				255,
+				255,
+				$alpha
+				);
 
 			imagefilledrectangle(
-				$this->working_image,
+				$working_image,
 				0,
 				$height + $i,
 				$width,
 				$height + $i,
 				$color_to_paint
-			);
+				);
 		}
 
-		if ($this->border)
-		{
-			$rgb			= $this->hex2rgb($this->border_color, false);
-			$color_to_paint	= imagecolorallocate($this->working_image, $rgb[0], $rgb[1], $rgb[2]);
+		// Add border if requested
+		if ($this->border) {
+			$rgb = $this->hex2rgb($this->border_color, false);
+			$border_color = imagecolorallocate(
+				$working_image,
+				$rgb[0],
+				$rgb[1],
+				$rgb[2]
+				);
 
-			//top line
-			imageline(
-				$this->working_image,
-				0,
-				0,
-				$width,
-				0,
-				$color_to_paint
-			);
-
-			//bottom line
-			imageline(
-				$this->working_image,
-				0,
-				$height,
-				$width,
-				$height,
-				$color_to_paint
-			);
-
-			//left line
-			imageline(
-				$this->working_image,
-				0,
-				0,
-				0,
-				$height,
-				$color_to_paint
-			);
-
-			//right line
-			imageline(
-				$this->working_image,
-				$width - 1,
-				0,
-				$width - 1,
-				$height,
-				$color_to_paint
-			);
+			// Top border
+			imageline($working_image, 0, 0, $width, 0, $border_color);
+			// Bottom border
+			imageline($working_image, 0, $height, $width, $height, $border_color);
+			// Left border
+			imageline($working_image, 0, 0, 0, $height, $border_color);
+			// Right border
+			imageline($working_image, $width - 1, 0, $width - 1, $height, $border_color);
 		}
 
-		if ($phpthumb->getFormat() == 'PNG')
-		{
+		// Preserve alpha for PNG images
+		if ($phpthumb->getFormat() === 'PNG') {
 			$color_transparent = imagecolorallocatealpha(
-				$this->working_image,
-				$this->options['alphaMaskColor'][0],
-				$this->options['alphaMaskColor'][1],
-				$this->options['alphaMaskColor'][2],
+				$working_image,
+				$options['alphaMaskColor'][0],
+				$options['alphaMaskColor'][1],
+				$options['alphaMaskColor'][2],
 				0
-			);
+				);
 
-			imagefill		($this->working_image, 0, 0, $color_transparent);
-			imagesavealpha	($this->working_image, true);
+			imagefill($working_image, 0, 0, $color_transparent);
+			imagesavealpha($working_image, true);
 		}
 
-		$phpthumb->setOldImage($this->working_image);
-		$this->current_dimensions['width']  = $width;
-		$this->current_dimensions['height'] = $new_height;
-		$phpthumb->setCurrentDimensions($this->current_dimensions);
+		// Update the PHPThumb instance
+		$phpthumb->setOldImage($working_image);
+		$phpthumb->setCurrentDimensions([
+			'width'  => $width,
+			'height' => $new_height,
+		]);
 
 		return $phpthumb;
 	}
 
 	/**
-	 * Flips the image vertically
-	 *
+	 * Flips the image vertically using imageflip (efficient GD function)
 	 */
-	protected function imageFlipVertical (): void
+	protected function imageFlipVertical($image): void
 	{
-		$x_i = imagesx($this->working_image);
-		$y_i = imagesy($this->working_image);
+		if (function_exists('imageflip')) {
+			imageflip($image, IMG_FLIP_VERTICAL);
+		} else {
+			// Fallback for older GD versions using efficient row copying
+			$x_i = imagesx($image);
+			$y_i = imagesy($image);
 
-		for ($x = 0; $x < $x_i; $x++)
-		{
-			for ($y = 0; $y < $y_i; $y++)
-			{
-				imagecopy(
-					$this->working_image,
-					$this->working_image,
-					$x,
-					$y_i - $y - 1,
-					$x,
-					$y,
-					1,
-					1
-				);
+			// Create temp image for flipping
+			$tmp = imagecreatetruecolor($x_i, $y_i);
+
+			if ($tmp !== false) {
+				for ($y = 0; $y < $y_i; $y++) {
+					imagecopy($tmp, $image, 0, $y, 0, $y_i - $y - 1, $x_i, 1);
+				}
+
+				// Copy back
+				for ($y = 0; $y < $y_i; $y++) {
+					imagecopy($image, $tmp, 0, $y_i - $y - 1, 0, $y, $x_i, 1);
+				}
+
+				imagedestroy($tmp);
 			}
 		}
 	}
 
 	/**
-	 * Converts a hex color to rgb tuples
+	 * Converts a hex color to RGB array or string
+	 *
+	 * @param string $hex Color in hex format (#FFFFFF or FFFFFF)
+	 * @param bool $as_string Return as "R G B" string instead of array
+	 * @return array|string RGB values
 	 */
-	protected function hex2rgb (string $hex, bool $as_string = false): string|array
+	protected function hex2rgb(string $hex, bool $as_string = false): array|string
 	{
-		// strip off any leading #
-		if (str_starts_with($hex, '#'))
-		{
-			$hex = substr($hex, 1);
-		}
-		else if (str_starts_with($hex, '&H'))
-		{
+		// Strip leading #
+		$hex = ltrim($hex, '#');
+
+		// Handle &H prefix (VB-style)
+		if (str_starts_with($hex, '&H')) {
 			$hex = substr($hex, 2);
 		}
 
-		// break into hex 3-tuple
-		$cutpoint	= ceil(strlen($hex) / 2)-1;
-		$rgb		= explode(':', wordwrap($hex, $cutpoint, ':', $cutpoint), 3);
+		// Ensure we have 6 characters
+		if (strlen($hex) === 3) {
+			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+		}
 
-		// convert each tuple to decimal
-		$rgb[0] = (isset($rgb[0]) ? hexdec($rgb[0]) : 0);
-		$rgb[1] = (isset($rgb[1]) ? hexdec($rgb[1]) : 0);
-		$rgb[2] = (isset($rgb[2]) ? hexdec($rgb[2]) : 0);
+		$rgb = [
+			hexdec(substr($hex, 0, 2)),
+			hexdec(substr($hex, 2, 2)),
+			hexdec(substr($hex, 4, 2)),
+		];
 
-		return ($as_string ? "$rgb[0] $rgb[1] $rgb[2]" : $rgb);
+		return $as_string ? implode(' ', $rgb) : $rgb;
 	}
 }
