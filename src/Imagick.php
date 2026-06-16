@@ -74,6 +74,14 @@ class Imagick extends PHPThumb
 	 */
 	public function __construct(string $file_name, array $options = [], array $plugins = [])
 	{
+		if (!extension_loaded('imagick'))
+		{
+			throw new RuntimeException(
+				'The Imagick extension is required to use PHPThumb\Imagick. ' .
+				'Install ext-imagick or use PHPThumb\GD instead.'
+				);
+		}
+
 		parent::__construct($file_name, $options, $plugins);
 
 		$this->determineFormat();

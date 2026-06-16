@@ -76,6 +76,14 @@ class GD extends PHPThumb
 	 */
 	public function __construct(string $file_name, array $options = [], array $plugins = [])
 	{
+		if (!extension_loaded('gd'))
+		{
+			throw new RuntimeException(
+				'The GD extension is required to use PHPThumb\GD. ' .
+				'Install ext-gd or use PHPThumb\Imagick instead.'
+				);
+		}
+
 		parent::__construct($file_name, $options, $plugins);
 
 		$this->determineFormat();

@@ -2,7 +2,7 @@
 
 > **A lightweight, chainable image manipulation library for PHP**
 
-PHP Thumb is a simple, modern image manipulation library aimed primarily at thumbnail generation. It provides a clean, fluent interface for common image operations built on top of the **GD** extension.
+PHP Thumb is a simple, modern image manipulation library aimed primarily at thumbnail generation. It provides a clean, fluent interface for common image operations, with **two interchangeable backends**: the ubiquitous **GD** extension and the more feature-rich **Imagick** extension.
 
 ---
 
@@ -12,6 +12,7 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Choosing a Backend: GD vs Imagick](#choosing-a-backend-gd-vs-imagick)
 - [Supported Formats](#supported-formats)
 - [Core API](#core-api)
   - [Resize Operations](#resize-operations)
@@ -31,13 +32,13 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 
 ## Features
 
-- **GD-based** — Built on PHP's widely-available GD extension
+- **Two interchangeable backends** — Use `PHPThumb\GD` (built on PHP's GD extension) or `PHPThumb\Imagick` (built on the PECL Imagick extension). Same API, switch with one `use` statement.
 - **Fluent chaining API** — Perform multiple manipulations on a single instance
 - **Flexible resizing** — By width, height, percentage, or adaptive (with crop)
 - **Crop operations** — From-center, quadrant-based, percentage-based, or vanilla x/y cropping
 - **Rotation** — 90° clockwise/counter-clockwise or arbitrary degrees
 - **Image filters** — Grayscale, negate, brightness, blur, emboss, and more
-- **Plugin system** — Extend the library with custom manipulations (Reflection, Trim, Watermark included)
+- **Plugin system** — Extend the library with custom manipulations (Reflection, Trim, Watermark included). Plugins transparently dispatch to the correct backend.
 - **Modern PHP 8.2+** — Strict types, enums where appropriate, modern syntax
 - **Composer-ready** — PSR-4 autoloading and Composer integration out of the box
 
@@ -46,10 +47,12 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 ## Requirements
 
 - **PHP 8.2** or higher
-- **GD** extension (>= 2.3.2)
+- At least one of:
+  - **GD** extension (>= 2.3.2)
+  - **Imagick** extension (>= 3.7.0; required for BMP, HEIC, TIFF, and other Imagick-only formats)
 - **Composer** (recommended for installation)
 
-> **Note:** Imagick support was explored but is not currently included. The library is GD-only at this time.
+The library auto-detects format support at runtime — an exception is thrown if your environment cannot handle the loaded file.
 
 ---
 
@@ -85,7 +88,9 @@ Then include the autoloader or files manually — but **Composer is strongly rec
 <?php
 require_once 'vendor/autoload.php';
 
+// Pick your backend — same API:
 use PHPThumb\GD;
+// use PHPThumb\Imagick; // ← uncomment to switch
 
 $thumb = new GD('path/to/image.jpg');
 $thumb->resize(300, 300)
@@ -95,25 +100,63 @@ $thumb->show();              // Output to browser
 // $thumb->getImageAsString(); // Or get raw binary as a string
 ```
 
+To use Imagick instead, change only the `use` statement and the constructor call:
+
+```php
+use PHPThumb\Imagick;
+
+$thumb = new Imagick('path/to/image.jpg');
+$thumb->resize(300, 300)
+      ->cropFromCenter(200, 200);
+$thumb->show();
+```
+
+The fluent API is identical across both backends.
+
+---
+
+## Choosing a Backend: GD vs Imagick
+
+Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ in format support, performance characteristics, and image quality on edge cases.
+
+| Concern | `PHPThumb\GD` | `PHPThumb\Imagick` |
+|---------|---------------|--------------------|
+| Default availability | Bundled with PHP since PHP 8 | Requires PECL extension |
+| Formats | JPEG, PNG, GIF, WebP, AVIF | JPEG, PNG, GIF, WebP, AVIF, **BMP, HEIC, TIFF** |
+| Memory usage | Lower | Higher (full pixel buffer) |
+| Resize quality | Good (bicubic in modern GD) | Excellent (Lanczos / Catmull on Imagick 7) |
+| Rotation | Bicubic approximation | Pixel-accurate |
+| Plugin output | Single-pass GD ops | Compositing with full alpha support |
+| Constructor return on plugin dispatch | `PHPThumb\GD` | `PHPThumb\Imagick` |
+
+**Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/TIFF support, higher-quality resampling, or pixel-accurate rotation.
+
+You can mix backends within the same project — for example, use GD for JPEG thumbnails and Imagick for HEIC processing.
+
 ---
 
 ## Supported Formats
 
-| Format | Supported |
-|--------|:---------:|
-| JPEG   | ✅ |
-| PNG    | ✅ |
-| GIF    | ✅ |
-| WEBP   | ✅ |
-| AVIF   | ✅ |
+| Format | GD | Imagick |
+|--------|:--:|:-------:|
+| JPEG   | ✅ | ✅ |
+| PNG    | ✅ | ✅ |
+| GIF    | ✅ | ✅ |
+| WEBP   | ✅ | ✅ |
+| AVIF   | ✅ | ✅ |
+| BMP    | ❌ | ✅ |
+| HEIC   | ❌ | ✅ |
+| TIFF   | ❌ | ✅ |
 
 Format support is detected automatically; an exception is thrown if your environment can't handle the loaded file.
 
-> **Note:** Loading from binary strings is supported by passing the raw image data as the filename parameter (GD only). Loading directly from URLs is **not** currently supported.
+> Loading directly from URLs is supported by both backends.
 
 ---
 
 ## Core API
+
+> All methods return the backend-specific class (`PHPThumb\GD` or `PHPThumb\Imagick`) for chaining. Documented as `self` below for brevity.
 
 ### Resize Operations
 
@@ -189,13 +232,19 @@ $thumb->rotateImageNDegrees(45);
 ```
 
 #### `imageFilter(int $filter, ...args): self`
-Applies a GD-style filter. Supported filters include:
-`IMG_FILTER_GRAYSCALE`, `IMG_FILTER_NEGATE`, `IMG_FILTER_BRIGHTNESS`, `IMG_FILTER_CONTRAST`, `IMG_FILTER_COLORIZE`, `IMG_FILTER_EDGEDETECT`, `IMG_FILTER_EMBOSS`, `IMG_FILTER_GAUSSIAN_BLUR`, `IMG_FILTER_SELECTIVE_BLUR`, `IMG_FILTER_MEAN_REMOVAL`, `IMG_FILTER_SMOOTH`, `IMG_FILTER_PIXELATE`, etc.
+Applies a filter. The argument list matches the underlying extension:
+
+- **GD**: any `IMG_FILTER_*` constant (`IMG_FILTER_GRAYSCALE`, `IMG_FILTER_NEGATE`, `IMG_FILTER_BRIGHTNESS`, `IMG_FILTER_CONTRAST`, `IMG_FILTER_COLORIZE`, `IMG_FILTER_EDGEDETECT`, `IMG_FILTER_EMBOSS`, `IMG_FILTER_GAUSSIAN_BLUR`, `IMG_FILTER_SELECTIVE_BLUR`, `IMG_FILTER_MEAN_REMOVAL`, `IMG_FILTER_SMOOTH`, `IMG_FILTER_PIXELATE`, etc.).
+- **Imagick**: any `Imagick::FILTER_*` constant (`Imagick::FILTER_GRAYSCALE`, `Imagick::FILTER_NEGATE`, etc.).
 
 ```php
+// GD
 $thumb->imageFilter(IMG_FILTER_GRAYSCALE);
 $thumb->imageFilter(IMG_FILTER_COLORIZE, 100, 0, 0); // Red tint
 $thumb->imageFilter(IMG_FILTER_BRIGHTNESS, 50);
+
+// Imagick
+$thumb->imageFilter(\Imagick::FILTER_GRAYSCALE);
 ```
 
 ### Pad
@@ -221,7 +270,7 @@ $thumb->save('output.jpg');         // Keep original format
 $thumb->save('output.png', 'PNG');  // Force conversion to PNG
 ```
 
-Valid `$format` values: `AVIF`, `GIF`, `JPEG`, `JPG`, `PNG`, `WEBP`.
+Valid `$format` values: `AVIF`, `GIF`, `JPEG`, `JPG`, `PNG`, `WEBP` (BMP/HEIC/TIFF on Imagick via `save($path, 'BMP')` etc.).
 
 #### `getImageAsString(): string`
 Returns the raw image binary as a string — perfect for storage in databases or inline `<img>` data URIs.
@@ -236,7 +285,7 @@ $dataUri = 'data:image/jpeg;base64,' . base64_encode($thumb->getImageAsString())
 
 Plugins extend PHPThumb with custom operations. They implement `PHPThumb\PluginInterface` and receive the active `PHPThumb` instance, which they can manipulate via public getters/setters.
 
-Plugins are passed as the third constructor argument and are executed automatically before `show()` or `save()`.
+Plugins are passed as the third constructor argument and are executed automatically before `show()` or `save()`. All built-in plugins transparently dispatch to the correct backend — you can pass `PHPThumb\GD` or `PHPThumb\Imagick` instances interchangeably, and the plugin will call the right code path.
 
 ### Built-in Plugins
 
@@ -244,6 +293,7 @@ Plugins are passed as the third constructor argument and are executed automatica
 Adds an image watermark with full positioning and opacity control.
 
 ```php
+// GD watermark on GD image
 $wm = new PHPThumb\GD('watermark.png');
 
 $thumb = new PHPThumb\GD('photo.jpg', [], [
@@ -253,6 +303,21 @@ $thumb = new PHPThumb\GD('photo.jpg', [], [
         opacity: 75,
         offset_x: 10,
         offset_y: 10
+    )
+]);
+
+$thumb->resize(800, 0)->show();
+```
+
+```php
+// Imagick watermark on Imagick image
+$wm = new PHPThumb\Imagick('watermark.png');
+
+$thumb = new PHPThumb\Imagick('photo.jpg', [], [
+    new PHPThumb\Plugins\Watermark(
+        $wm,
+        position: 'center',
+        opacity: 50
     )
 ]);
 
@@ -277,6 +342,15 @@ $thumb = new PHPThumb\GD('scan.jpg', [], [
 $thumb->show();
 ```
 
+```php
+// Imagick version works identically
+$thumb = new PHPThumb\Imagick('scan.tiff', [], [
+    new PHPThumb\Plugins\Trim(color: [0, 0, 0], sides: 'TB')
+]);
+
+$thumb->save('scan-trimmed.png', 'PNG');
+```
+
 #### `PHPThumb\Plugins\Reflection`
 Generates a classic glossy reflection effect.
 
@@ -294,6 +368,8 @@ $thumb = new PHPThumb\GD('logo.png', [], [
 $thumb->show();
 ```
 
+The Imagick plugin uses a single multi-pass composite that approximates the GD per-row gradient. Visual fidelity is slightly different from GD (constant-fade vs. linear gradient) but the overall effect is similar.
+
 ### Writing Custom Plugins
 
 Implement `PHPThumb\PluginInterface`:
@@ -308,6 +384,13 @@ class Sepia implements PluginInterface
 {
     public function execute(PHPThumb $phpthumb): PHPThumb
     {
+        // Branch on the backend type if your plugin needs extension-specific code.
+        if ($phpthumb instanceof \PHPThumb\Imagick) {
+            $phpthumb->getOldImage()->sepiaToneImage(80);
+            return $phpthumb;
+        }
+
+        // GD fallback
         return $phpthumb->imageFilter(IMG_FILTER_GRAYSCALE)
                         ->imageFilter(IMG_FILTER_COLORIZE, 90, 60, 40);
     }
@@ -318,6 +401,8 @@ Then register it:
 
 ```php
 $thumb = new PHPThumb\GD('photo.jpg', [], [new App\Thumb\Plugins\Sepia()]);
+// or
+$thumb = new PHPThumb\Imagick('photo.jpg', [], [new App\Thumb\Plugins\Sepia()]);
 ```
 
 ---
@@ -333,24 +418,24 @@ $thumb = new PHPThumb\GD('image.jpg', [
 ]);
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `resizeUp` | `bool` | `false` | Allow upscaling images that are smaller than the target size |
-| `jpegQuality` | `int` | `100` | JPEG output quality (0–100) |
-| `webpQuality` | `int` | `100` | WebP output quality (0–100) |
-| `avifQuality` | `int` | `100` | AVIF output quality (0–100) |
-| `correctPermissions` | `bool` | `false` | Attempt to `chmod` the target directory if not writable |
-| `preserveAlpha` | `bool` | `true` | Preserve PNG alpha channel |
-| `alphaMaskColor` | `array` | `[255, 255, 255]` | RGB color used for PNG alpha mask |
-| `preserveTransparency` | `bool` | `true` | Preserve GIF / WebP transparency |
-| `transparencyMaskColor` | `array` | `[0, 0, 0]` | RGB color used for GIF transparency mask |
-| `interlace` | `bool\|null` | `null` | Enable/disable interlacing (progressive rendering). `null` = leave default |
+| Option | Type | Default | Backend | Description |
+|--------|------|---------|---------|-------------|
+| `resizeUp` | `bool` | `false` | GD & Imagick | Allow upscaling images that are smaller than the target size |
+| `jpegQuality` | `int` | `100` | GD & Imagick | JPEG output quality (0–100) |
+| `webpQuality` | `int` | `100` | GD & Imagick | WebP output quality (0–100) |
+| `avifQuality` | `int` | `100` | GD & Imagick | AVIF output quality (0–100) |
+| `correctPermissions` | `bool` | `false` | GD & Imagick | Attempt to `chmod` the target directory if not writable |
+| `preserveAlpha` | `bool` | `true` | GD & Imagick | Preserve PNG alpha channel |
+| `alphaMaskColor` | `array` | `[255, 255, 255]` | GD & Imagick | RGB color used for PNG alpha mask |
+| `preserveTransparency` | `bool` | `true` | GD & Imagick | Preserve GIF / WebP transparency |
+| `transparencyMaskColor` | `array` | `[0, 0, 0]` | GD & Imagick | RGB color used for GIF transparency mask |
+| `interlace` | `bool\|null` | `null` | GD & Imagick | Enable/disable interlacing (progressive rendering). `null` = leave default |
 
 ---
 
 ## Examples
 
-The `examples/` directory contains runnable demos for every feature. A quick tour:
+The `examples/` directory contains runnable demos for every feature. Every example is implemented with **both backends** — switch the `use` statement at the top of any example to swap between them.
 
 ```php
 // Basic resize
@@ -369,7 +454,7 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 // Rotate 90° clockwise
 (new PHPThumb\GD('photo.jpg'))->rotateImage('CW')->save('rotated.jpg');
 
-// Grayscale + slight blur
+// Grayscale + slight blur (GD)
 (new PHPThumb\GD('photo.jpg'))
     ->imageFilter(IMG_FILTER_GRAYSCALE)
     ->imageFilter(IMG_FILTER_GAUSSIAN_BLUR)
@@ -389,11 +474,39 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
     ->save('final.jpg', 'JPEG');
 ```
 
+The same examples with Imagick:
+
+```php
+// Imagick: load a HEIC photo, convert to JPEG
+$thumb = new PHPThumb\Imagick('photo.heic');
+$thumb->resize(800, 0)->save('photo.jpg', 'JPEG');
+
+// Imagick: pixel-accurate 45° rotation
+(new PHPThumb\Imagick('photo.jpg'))
+    ->rotateImageNDegrees(45)
+    ->pad(1000, 1000, [255, 255, 255])
+    ->save('rotated-padded.png', 'PNG');
+
+// Imagick: grayscale via Imagick's own filter constant
+(new PHPThumb\Imagick('photo.jpg'))
+    ->imageFilter(\Imagick::FILTER_GRAYSCALE)
+    ->save('grayscale.jpg');
+
+// Imagick: composite a watermark with 50% opacity
+$wm = (new PHPThumb\Imagick('logo.png'))->resizePercent(20);
+
+(new PHPThumb\Imagick('photo.jpg', [], [
+    new PHPThumb\Plugins\Watermark($wm, 'bottom right', 50, 10, 10)
+]))->resize(800, 0)->show();
+```
+
 Run any example directly:
 
 ```bash
 php examples/resize_basic.php
 ```
+
+To run the Imagick variant, edit the `use` line at the top of the example (or pass `--imagick` if the example script supports a flag — see individual example files).
 
 ---
 
@@ -403,15 +516,13 @@ Full documentation — including detailed guides, tutorials, and plugin recipes 
 
 📚 **[https://github.com/PHPThumb/PHPThumb/wiki](https://github.com/PHPThumb/PHPThumb/wiki)**
 
-> **Note:** The wiki is currently being updated for this version of PHPThumb. Some pages may still reference the older API. Refer to this README and the runnable examples in `examples/` for the most accurate information in the meantime.
-
 💬 **[Discussions](https://github.com/PHPThumb/PHPThumb/discussions)** — Got questions, comments, or feedback? This is the place to visit.
 
 ---
 
 ## Testing
 
-PHPThumb ships with a PHPUnit test suite under `tests/`.
+PHPThumb ships with a PHPUnit test suite under `tests/`. Tests are split by backend and feature area.
 
 ```bash
 composer install
@@ -419,6 +530,35 @@ vendor/bin/phpunit
 ```
 
 Test fixtures live in `tests/resources/`.
+
+### Backend-specific test selection
+
+Run only the GD tests:
+
+```bash
+vendor/bin/phpunit tests/PHPThumb/Tests/GDTest.php tests/PHPThumb/Tests/LoadTest.php
+```
+
+Run only the Imagick tests:
+
+```bash
+vendor/bin/phpunit tests/PHPThumb/Tests/ImagickTest.php \
+                   tests/PHPThumb/Tests/ImagickLoadTest.php \
+                   tests/PHPThumb/Tests/ImagickOperationsTest.php \
+                   tests/PHPThumb/Tests/ImagickOutputTest.php \
+                   tests/PHPThumb/Tests/ImagickAdvancedTest.php \
+                   tests/PHPThumb/Tests/ImagickPluginTest.php
+```
+
+Imagick tests skip automatically if `ext-imagick` is not loaded.
+
+Network-dependent tests (e.g. loading remote images from URLs) are gated behind the `RUN_NETWORK_TESTS=1` environment variable:
+
+```bash
+RUN_NETWORK_TESTS=1 vendor/bin/phpunit tests/PHPThumb/Tests/ImagickRemoteImageTest.php
+```
+
+Format-coverage tests for BMP/HEIC/TIFF skip silently if the corresponding fixture file is absent.
 
 ---
 
@@ -428,7 +568,7 @@ Contributions are welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Add tests for any new behavior
+3. Add tests for any new behavior (in **both** `*GD*` and `*Imagick*` test files when adding to the core API)
 4. Ensure the test suite passes (`vendor/bin/phpunit`)
 5. Submit a pull request
 
@@ -445,4 +585,5 @@ PHP Thumb is released under the **MIT License**. See [LICENSE](LICENSE) for deta
 ## Credits
 
 - Original author: **Ian Selby**
+- Imagick backend implementation
 - Contributors listed on [GitHub](https://github.com/PHPThumb/PHPThumb/graphs/contributors)
