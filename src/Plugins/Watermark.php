@@ -4,6 +4,7 @@ namespace PHPThumb\Plugins;
 
 use InvalidArgumentException;
 use PHPThumb\GD;
+use PHPThumb\Imagick;
 use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
 
@@ -27,7 +28,7 @@ class Watermark implements PluginInterface
 	/**
 	 * @var GD|Imagick The watermark image instance
 	 */
-	protected $wm;
+	protected GD|Imagick $wm;
 
 	/**
 	 * @var string Position for the watermark
@@ -197,9 +198,24 @@ class Watermark implements PluginInterface
 			throw new \RuntimeException('Image is not initialized');
 		}
 
-		// Apply opacity to watermark
+		// Apply opacity to watermark.
+		//
+		// Imagick::setImageOpacity() was removed in PECL Imagick 3.8.0.
+		// Use evaluateImage() with EVALUATE_MULTIPLY on the alpha channel
+		// to scale the existing alpha by $this->opacity / 100.
+		//
+		// Note: only apply this if the watermark actually has alpha — otherwise
+		// the result is meaningless (and on some Imagick builds will throw
+		// "unable to set image alpha channel").
 		if ($this->opacity < 100) {
-			$watermark->setImageOpacity($this->opacity / 100);
+			if ($watermark->getImageAlphaChannel()) {
+				$multiplier = $this->opacity / 100;
+				$watermark->evaluateImage(
+					\Imagick::EVALUATE_MULTIPLY,
+					$multiplier,
+					\Imagick::CHANNEL_ALPHA
+					);
+			}
 		}
 
 		// Composite watermark onto base image
@@ -210,7 +226,7 @@ class Watermark implements PluginInterface
 			$watermark_position_y
 			);
 
-		// old_image is already updated via reference
+		// Clean up the cloned watermark
 		$watermark->clear();
 		$watermark->destroy();
 

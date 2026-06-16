@@ -3,8 +3,11 @@
 namespace PHPThumb\Plugins;
 
 use InvalidArgumentException;
+use PHPThumb\GD;
+use PHPThumb\Imagick;
 use PHPThumb\PHPThumb;
 use PHPThumb\PluginInterface;
+use RuntimeException;
 
 /**
  * GD Reflection Lib Plugin Definition File
@@ -75,6 +78,18 @@ class Reflection implements PluginInterface
 	 * Executes the reflection effect on the image
 	 */
 	public function execute(PHPThumb $phpthumb): PHPThumb
+	{
+		if ($phpthumb instanceof Imagick) {
+			return $this->executeImagick($phpthumb);
+		}
+
+		return $this->executeGD($phpthumb);
+	}
+
+	/**
+	 * Execute reflection for GD-based PHPThumb
+	 */
+	protected function executeGD(PHPThumb $phpthumb): PHPThumb
 	{
 		$current_dimensions = $phpthumb->getCurrentDimensions();
 		$options             = $phpthumb->getOptions();
@@ -208,6 +223,149 @@ class Reflection implements PluginInterface
 
 		// Update the PHPThumb instance
 		$phpthumb->setOldImage($working_image);
+		$phpthumb->setCurrentDimensions([
+			'width'  => $width,
+			'height' => $new_height,
+		]);
+
+		return $phpthumb;
+	}
+
+	/**
+	 * Execute reflection for Imagick-based PHPThumb
+	 *
+	 * Imagick equivalent of executeGD(). Matches the GD visual: opaque white
+	 * canvas, mirrored slice composited underneath the original, then a
+	 * solid-white gradient with rising alpha painted over the reflection area
+	 * (so the bottom of the reflection fades to pure white).
+	 */
+	protected function executeImagick(Imagick $phpthumb): PHPThumb
+	{
+		$current_dimensions = $phpthumb->getCurrentDimensions();
+		$options             = $phpthumb->getOptions();
+
+		$width              = $current_dimensions['width'];
+		$height             = $current_dimensions['height'];
+		$reflection_height  = max(1, intval($height * ($this->reflection / 100)));
+		$new_height         = $height + $reflection_height;
+
+		// Where in the source image the reflected portion starts (top of slice).
+		$reflected_part     = intval($height * ($this->percent / 100));
+		$slice_height       = max(1, $height - $reflected_part);
+
+		$base_image = $phpthumb->getOldImage();
+
+		if ($base_image === null) {
+			throw new RuntimeException('Base image is not initialized');
+		}
+
+		// ----- Build the reflection slice -----
+
+		$slice = clone $base_image;
+		$slice->cropImage(
+			$width,
+			$slice_height,
+			0,
+			$reflected_part
+			);
+
+		// Resize the slice to match the requested reflection height.
+		if ($reflection_height !== $slice_height) {
+			$slice->thumbnailImage($width, $reflection_height, false);
+		}
+
+		// Flip the slice vertically. rotate 180 + flop is the canonical
+		// Imagick equivalent of imageflip(IMG_FLIP_VERTICAL).
+		$slice->rotateImage(new \ImagickPixel('rgba(0,0,0,0)'), 180);
+		$slice->flopImage();
+
+		// ----- Build the combined canvas -----
+		//
+		// Opaque white with alpha channel enabled — so the gradient fade reveals
+		// white, matching the GD branch which uses
+		// imagecolorallocatealpha(255, 255, 255, 0).
+
+		$canvas = new \Imagick();
+		$canvas->newImage(
+			$width,
+			$new_height,
+			new \ImagickPixel('white')
+			);
+		$canvas->setImageMatte(true);
+		$canvas->setImageFormat($base_image->getImageFormat());
+
+		// Original on top.
+		$canvas->compositeImage(
+			$base_image,
+			\Imagick::COMPOSITE_DEFAULT,
+			0,
+			0
+			);
+
+		// Mirrored slice under the original.
+		$canvas->compositeImage(
+			$slice,
+			\Imagick::COMPOSITE_DEFAULT,
+			0,
+			$height
+			);
+
+		// ----- White-fade gradient on top of the reflection area -----
+		//
+		// Single solid-white image the height of the reflection, with its
+		// alpha channel scaled by ($white / 100). When composited over the
+		// slice it produces the same effect as GD's per-row
+		// imagefilledrectangle() loop.
+
+		if ($this->white > 0) {
+			$gradient = new \Imagick();
+			$gradient->newImage(
+				$width,
+				$reflection_height,
+				new \ImagickPixel('white')
+				);
+			$gradient->setImageMatte(true);
+			$gradient->evaluateImage(
+				\Imagick::EVALUATE_MULTIPLY,
+				$this->white / 100,
+				\Imagick::CHANNEL_ALPHA
+				);
+
+			$canvas->compositeImage(
+				$gradient,
+				\Imagick::COMPOSITE_DEFAULT,
+				0,
+				$height
+				);
+
+			$gradient->clear();
+			$gradient->destroy();
+		}
+
+		// Clean up the slice
+		$slice->clear();
+		$slice->destroy();
+
+		// ----- Optional separator border -----
+		if ($this->border) {
+			$draw = new \ImagickDraw();
+			$draw->setStrokeColor(new \ImagickPixel($this->border_color));
+			$draw->setStrokeWidth(1);
+			$draw->setStrokeAntialias(false);
+
+			$draw->line(0, 0, $width - 1, 0);
+			$draw->line(0, $height, $width - 1, $height);
+			$draw->line(0, $new_height - 1, $width - 1, $new_height - 1);
+			$draw->line(0, 0, 0, $new_height - 1);
+			$draw->line($width - 1, 0, $width - 1, $new_height - 1);
+
+			$canvas->drawImage($draw);
+			$draw->clear();
+			$draw->destroy();
+		}
+
+		// Update the PHPThumb instance
+		$phpthumb->setOldImage($canvas);
 		$phpthumb->setCurrentDimensions([
 			'width'  => $width,
 			'height' => $new_height,
