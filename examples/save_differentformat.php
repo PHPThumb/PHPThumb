@@ -1,30 +1,23 @@
 <?php
 /**
- * PhpThumb Library Example File
+ * Save to a different format than the source (JPEG → PNG here).
  *
- * This file contains example usage for the PHP Thumb Library
- *
- * PHP Version 8 with GD 2.3+
- * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
- * Copyright (c) 2009, Ian Selby
- *
- * Author(s): Ian Selby <ianrselby@gmail.com>
- *
- * Licensed under the MIT License
- * Redistributions of files must retain the above copyright notice.
+ * The format argument is case-insensitive ('png' and 'PNG' both work).
+ * Valid formats on GD: AVIF, GIF, JPEG (or JPG), PNG, WEBP.
+ * Valid formats on Imagick: those plus BMP, HEIC, TIFF, and any format your
+ * local ImageMagick build supports.
  *
  * @author Ian Selby <ianrselby@gmail.com>
- * @copyright Copyright (c) 2009 Ian Selby
- * @link https://github.com/PHPThumb/PHPThumb
- * @license http://www.opensource.org/licenses/mit-license.php The MIT License
- * @version 3.0
- * @package PhpThumb
- * @subpackage Examples
- * @filesource
+ * @license MIT — see LICENSE in the repo root.
  */
 
 require_once '../vendor/autoload.php';
 
-$thumb = new PHPThumb\GD(__DIR__ .'/../tests/resources/test.jpg');
+// Pick your backend: PHPThumb\GD (default) or PHPThumb\Imagick.
+$backend = PHPThumb\GD::class;
+// $backend = PHPThumb\Imagick::class;
+
+$thumb = new $backend(__DIR__ .'/../tests/resources/test.jpg');
 $thumb->adaptiveResize(300, 300);
 $thumb->save('test.png', 'png');
+

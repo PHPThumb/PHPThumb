@@ -1,32 +1,26 @@
 <?php
 /**
- * PhpThumb Library Example File
+ * Overlay a scaled, semi-transparent watermark on the image.
  *
- * This file contains example usage for the PHP Thumb Library
+ * The Watermark constructor (PHPThumb 2.4+) type-hints GD|Imagick for $wm.
+ // The fluent return value of resizePercent() is itself a valid instance,
+ // which is why this passes it in directly.
  *
- * PHP Version 8 with GD 2.3+
- * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
- * Copyright (c) 2009, Ian Selby
+ * Note: the watermark source must be the same backend as the base image.
  *
- * Author(s): Ian Selby <ianrselby@gmail.com>
- *
- * Licensed under the MIT License
- * Redistributions of files must retain the above copyright notice.
- *
+ * @author Ian Selby <ianrselby@gmail.com>
  * @author Oleg Sherbakov <holdmann@yandex.ru>
- * @copyright Copyright (c) 2016
- * @license http://www.opensource.org/licenses/mit-license.php The MIT License
- * @version 3.0
- * @package PhpThumb
- * @subpackage Examples
- * @filesource
+ * @license MIT — see LICENSE in the repo root.
  */
 
 require_once '../vendor/autoload.php';
 
-$watermark = new PHPThumb\GD(__DIR__ .'/../tests/resources/test.jpg');
+$backend = PHPThumb\GD::class;
+// $backend = PHPThumb\Imagick::class;
 
-$thumb = new PHPThumb\GD(__DIR__ .'/../tests/resources/test.jpg', [], [
+$watermark = new $backend(__DIR__ .'/../tests/resources/test.jpg');
+
+$thumb = new $backend(__DIR__ .'/../tests/resources/test.jpg', [], [
 	new PHPThumb\Plugins\Watermark($watermark->resizePercent(20), 'center', 50, 0, 0)
 ]);
 

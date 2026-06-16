@@ -1,30 +1,21 @@
 <?php
 /**
- * PhpThumb Library Example File
+ * Load an image directly from a URL and resize it.
  *
- * This file contains example usage for the PHP Thumb Library
- *
- * PHP Version 8 with GD 2.3+
- * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
- * Copyright (c) 2009, Ian Selby
- *
- * Author(s): Ian Selby <ianrselby@gmail.com>
- *
- * Licensed under the MIT License
- * Redistributions of files must retain the above copyright notice.
+ * Both backends accept URLs as the constructor argument; allow_url_fopen
+ * must be enabled in php.ini. Use raw.githubusercontent.com (not
+ * github.com/<repo>/blob/…) for direct asset access — the latter returns
+ * an HTML page.
  *
  * @author Ian Selby <ianrselby@gmail.com>
- * @copyright Copyright (c) 2009 Ian Selby
- * @link https://github.com/PHPThumb/PHPThumb
- * @license http://www.opensource.org/licenses/mit-license.php The MIT License
- * @version 3.0
- * @package PhpThumb
- * @subpackage Examples
- * @filesource
+ * @license MIT — see LICENSE in the repo root.
  */
 
 require_once '../vendor/autoload.php';
 
-$thumb = new PHPThumb\GD('https://github.com/PHPThumb/PHPThumb/blob/master/examples/test.jpg');
+$backend = PHPThumb\GD::class;
+// $backend = PHPThumb\Imagick::class;
+
+$thumb = new $backend('https://raw.githubusercontent.com/PHPThumb/PHPThumb/master/tests/resources/test.jpg');
 $thumb->resize(200, 200);
 $thumb->show();

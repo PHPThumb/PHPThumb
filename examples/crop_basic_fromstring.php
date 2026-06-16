@@ -1,32 +1,29 @@
 <?php
 /**
- * PhpThumb Library Example File
+ * Load an image from raw bytes (e.g. a database BLOB or file_get_contents()
+ * result), manipulate it, and emit both a debug view and a data URI.
  *
- * This file contains example usage for the PHP Thumb Library
+ * NOTE: GD-only. PHPThumb\GD auto-detects the STRING format via getimagesize().
+ * PHPThumb\Imagick requires a file path or URL — to use raw bytes with the
+ * Imagick backend, write them to a temp file first:
  *
- * PHP Version 8 with GD 2.3+
- * PhpThumb : PHP Thumb Library <https://github.com/PHPThumb/PHPThumb>
- * Copyright (c) 2009, Ian Selby
- *
- * Author(s): Ian Selby <ianrselby@gmail.com>
- *
- * Licensed under the MIT License
- * Redistributions of files must retain the above copyright notice.
+ *     $tmp = tempnam(sys_get_temp_dir(), 'thumb');
+ *     file_put_contents($tmp, $bytes);
+ *     $thumb = new PHPThumb\Imagick($tmp);
+ *     // ... do work ...
+ *     @unlink($tmp);
  *
  * @author Ian Selby <ianrselby@gmail.com>
- * @copyright Copyright (c) 2009 Ian Selby
- * @link https://github.com/PHPThumb/PHPThumb
- * @license http://www.opensource.org/licenses/mit-license.php The MIT License
- * @version 3.0
- * @package PhpThumb
- * @subpackage Examples
- * @filesource
+ * @license MIT — see LICENSE in the repo root.
  */
 
+require_once '../vendor/autoload.php';
 
-$fileData = file_get_contents('test.jpg');
+$backend = PHPThumb\GD::class; // Pinned: see note above.
 
-$thumb = new PHPThumb\GD($fileData);
+$fileData = file_get_contents(__DIR__ . '/../tests/resources/test.jpg');
+
+$thumb = new $backend($fileData);
 $thumb->crop(100, 100, 300, 200);
 
 // $imageAsString will contain the image data suitable for saving in a database.
