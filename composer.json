@@ -14,7 +14,8 @@
 		"rotate",
 		"crop",
 		"watermark",
-		"filter"
+		"filter",
+		"oop-library"
 	],
 	"require" : {
 		"php" : ">=8.2"
