@@ -1,18 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<phpunit backupGlobals="false"
-         backupStaticAttributes="false"
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+         backupGlobals="false"
+         backupStaticProperties="false"
          colors="true"
-         convertErrorsToExceptions="true"
-         convertNoticesToExceptions="true"
-         convertWarningsToExceptions="true"
          processIsolation="false"
          stopOnFailure="false"
          bootstrap="vendor/autoload.php"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="true"
+         displayDetailsOnAllIssues="true"
 >
     <testsuites>
+        <!-- Default full suite -->
         <testsuite name="PHPThumb Test Suite">
-            <directory>./tests/PHPThumb/</directory>
+            <directory>./tests/PHPThumb/Tests/</directory>
+        </testsuite>
+
+        <!-- GD-only suite -->
+        <testsuite name="GD">
+            <file>./tests/PHPThumb/Tests/GDTest.php</file>
+            <file>./tests/PHPThumb/Tests/LoadTest.php</file>
+        </testsuite>
+
+        <!-- Imagick-only suite -->
+        <testsuite name="Imagick">
+            <file>./tests/PHPThumb/Tests/ImagickTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickLoadTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickOperationsTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickOutputTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickAdvancedTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickPluginTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickRemoteImageTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickFormatCoverageTest.php</file>
         </testsuite>
     </testsuites>
+
+    <!-- Source configuration for code coverage -->
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+        <exclude>
+            <directory>tests</directory>
+            <directory>vendor</directory>
+        </exclude>
+    </source>
+
+    <php>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="-1"/>
+    </php>
 </phpunit>

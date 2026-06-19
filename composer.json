@@ -21,7 +21,7 @@
 		"php" : ">=8.2"
 	},
 	"require-dev" : {
-		"phpunit/phpunit" : "^9.6 || ^10.5 || ^11.0"
+		"phpunit/phpunit" : "^11.0"
 	},
 	"suggest" : {
 		"ext-gd" : "Required to use the PHPThumb\\GD backend (default for most users).",
@@ -53,8 +53,8 @@
 	},
 	"scripts" : {
 		"test" : "phpunit",
-		"test:gd" : "phpunit tests/PHPThumb/Tests/GDTest.php tests/PHPThumb/Tests/LoadTest.php",
-		"test:imagick" : "phpunit tests/PHPThumb/Tests/ImagickTest.php tests/PHPThumb/Tests/ImagickLoadTest.php tests/PHPThumb/Tests/ImagickOperationsTest.php tests/PHPThumb/Tests/ImagickOutputTest.php tests/PHPThumb/Tests/ImagickAdvancedTest.php tests/PHPThumb/Tests/ImagickPluginTest.php tests/PHPThumb/Tests/ImagickFormatCoverageTest.php"
+		"test:gd" : "phpunit --testsuite=GD",
+		"test:imagick" : "phpunit --testsuite=Imagick"
 	},
 	"scripts-descriptions" : {
 		"test" : "Run the full PHPUnit test suite",
