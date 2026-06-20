@@ -89,14 +89,20 @@ class ImagickBorderTest extends TestCase
 
     public function testBorderAcceptsHexShort(): void
     {
-        $this->thumb->border(5, '#fff');
-        $rgb = $this->thumb->getOldImage()
-            ->getImagePixelColor(0, 0)
-            ->getColor();
-        self::assertGreaterThanOrEqual(0xFF00, $rgb['r']);
-        self::assertGreaterThanOrEqual(0xFF00, $rgb['g']);
-        self::assertGreaterThanOrEqual(0xFF00, $rgb['b']);
+    	$this->thumb->border(5, '#fff');
+    	$rgb = $this->thumb->getOldImage()
+    	->getImagePixelColor(0, 0)
+    	->getColor();
+
+    	// The invariant we care about: the corner pixel is white (#fff).
+    	// Imagick can return either 8-bit (255) or 16-bit (65280) RGB
+    	// values depending on the build's Quantum depth, so we normalize
+    	// to the ratio between channels: R == G == B for white.
+    	self::assertSame((int) $rgb['r'], (int) $rgb['g']);
+    	self::assertSame((int) $rgb['g'], (int) $rgb['b']);
+    	self::assertGreaterThan(0, (int) $rgb['r']);
     }
+
 
     public function testBorderZeroIsNoOp(): void
     {

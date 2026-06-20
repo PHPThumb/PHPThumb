@@ -259,10 +259,14 @@ class GDGammaTest extends TestCase
     	$w = 50;
     	$h = 50;
     	$im = imagecreatetruecolor($w, $h);
-    	$white = imagecolorallocate($im, 255, 255, 255);
-    	$black = imagecolorallocate($im, 0, 0, 0);
-    	imagefilledrectangle($im, 0,  0, $w / 2, $h, $white);
-    	imagefilledrectangle($im, $w / 2, 0, $w - 1,  $h, $black);
+    	// Use mid-tone values rather than pure black/white so the kernel
+    	// has room to produce a visible change at the boundary without
+    	// saturating. Pure 0/255 collapses both sides to the saturation
+    	// point and makes the test degenerate.
+    	$light = imagecolorallocate($im, 200, 200, 200);
+    	$dark  = imagecolorallocate($im, 100, 100, 100);
+    	imagefilledrectangle($im, 0,    0, $w / 2, $h, $light);
+    	imagefilledrectangle($im, $w / 2, 0, $w - 1,  $h, $dark);
 
     	$thumb = new GD(__DIR__ . '/../../resources/test.jpg');
     	$thumb->setOldImage($im);
@@ -281,14 +285,16 @@ class GDGammaTest extends TestCase
     	// Far-from-edge pixels must remain at their original flat color.
     	// With the bug, they'd be ~85 (white side) and ~0 (black side) is
     	// unchanged, but the white side would be visibly darkened.
-    	[$leftR, $leftG, $leftB] = $this->readRgb($thumb->getOldImage(), 5, (int) ($h / 2));
-    	self::assertEqualsWithDelta(255, $leftR, 2, 'left flat region must stay white');
-    	self::assertEqualsWithDelta(255, $leftG, 2, 'left flat region must stay white');
-    	self::assertEqualsWithDelta(255, $leftB, 2, 'left flat region must stay white');
+    	// Sample far from the boundary so the kernel has no effect on these
+    	// pixels — they should stay at the fixture's mid-tone values.
+    	[$leftR, $leftG, $leftB] = $this->readRgb($thumb->getOldImage(), 2, (int) ($h / 2));
+    	self::assertEqualsWithDelta(200, $leftR, 2, 'left flat region must stay at fixture value');
+    	self::assertEqualsWithDelta(200, $leftG, 2, 'left flat region must stay at fixture value');
+    	self::assertEqualsWithDelta(200, $leftB, 2, 'left flat region must stay at fixture value');
 
-    	[$rightR, $rightG, $rightB] = $this->readRgb($thumb->getOldImage(), $w - 5, (int) ($h / 2));
-    	self::assertEqualsWithDelta(0, $rightR, 2, 'right flat region must stay black');
-    	self::assertEqualsWithDelta(0, $rightG, 2, 'right flat region must stay black');
-    	self::assertEqualsWithDelta(0, $rightB, 2, 'right flat region must stay black');
+    	[$rightR, $rightG, $rightB] = $this->readRgb($thumb->getOldImage(), $w - 3, (int) ($h / 2));
+    	self::assertEqualsWithDelta(100, $rightR, 2, 'right flat region must stay at fixture value');
+    	self::assertEqualsWithDelta(100, $rightG, 2, 'right flat region must stay at fixture value');
+    	self::assertEqualsWithDelta(100, $rightB, 2, 'right flat region must stay at fixture value');
     }
 }

@@ -25,14 +25,16 @@ class GDFlipTest extends TestCase
         $before = $this->thumb->getOldImage();
         $w = imagesx($before);
 
-        $rgbLeft  = imagecolorat($before, 5, imagesy($before) / 2);
-        $rgbRight = imagecolorat($before, $w - 5, imagesy($before) / 2);
+        $mid_y = (int) (imagesy($before) / 2);
+
+        $rgbLeft  = imagecolorat($before, 5, $mid_y);
+        $rgbRight = imagecolorat($before, $w - 6, $mid_y);
 
         $this->thumb->flip('horizontal');
 
         $after = $this->thumb->getOldImage();
-        $rgbLeftAfter  = imagecolorat($after, 5, imagesy($after) / 2);
-        $rgbRightAfter = imagecolorat($after, $w - 5, imagesy($after) / 2);
+        $rgbLeftAfter  = imagecolorat($after, 5, $mid_y);
+        $rgbRightAfter = imagecolorat($after, $w - 6, $mid_y);
 
         self::assertSame($rgbLeft,  $rgbRightAfter);
         self::assertSame($rgbRight, $rgbLeftAfter);
@@ -40,20 +42,23 @@ class GDFlipTest extends TestCase
 
     public function testFlipVerticalSwapsRows(): void
     {
-        $before = $this->thumb->getOldImage();
-        $h = imagesy($before);
+    	$before = $this->thumb->getOldImage();
+    	$h = imagesy($before);
+    	$mid_x = (int) (imagesx($before) / 2);
 
-        $rgbTop    = imagecolorat($before, 50, 5);
-        $rgbBottom = imagecolorat($before, 50, $h - 5);
+    	// Sample symmetric pairs around the horizontal centerline: row 5 vs row (h-6).
+    	$rgb_top    = imagecolorat($before, $mid_x, 5);
+    	$rgb_bottom = imagecolorat($before, $mid_x, $h - 6);
 
-        $this->thumb->flip('vertical');
+    	$this->thumb->flip('vertical');
 
-        $after = $this->thumb->getOldImage();
-        $rgbTopAfter    = imagecolorat($after, 50, 5);
-        $rgbBottomAfter = imagecolorat($after, 50, $h - 5);
+    	$after = $this->thumb->getOldImage();
+    	$rgb_top_after    = imagecolorat($after, $mid_x, 5);
+    	$rgb_bottom_after = imagecolorat($after, $mid_x, $h - 6);
 
-        self::assertSame($rgbTop,    $rgbBottomAfter);
-        self::assertSame($rgbBottom, $rgbTopAfter);
+    	// After a vertical flip, the rows should have swapped.
+    	self::assertSame($rgb_top,    $rgb_bottom_after);
+    	self::assertSame($rgb_bottom, $rgb_top_after);
     }
 
     public function testFlipBothEquivalentToRotate180(): void

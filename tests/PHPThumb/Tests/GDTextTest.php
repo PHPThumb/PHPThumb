@@ -3,6 +3,7 @@ namespace PHPThumb\Tests;
 
 use InvalidArgumentException;
 use PHPThumb\GD;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class GDTextTest extends TestCase
@@ -55,9 +56,7 @@ class GDTextTest extends TestCase
         self::assertSame(500, $this->thumb->getCurrentDimensions()['width']);
     }
 
-    /**
-     * @dataProvider positionProvider
-     */
+    #[DataProvider('positionProvider')]
     public function testTextAcceptsPositions(string $position): void
     {
         $this->thumb->text('X', $position, ['color' => '#FFFFFF']);

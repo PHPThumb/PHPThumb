@@ -594,10 +594,22 @@ class GD extends PHPThumb
 			$options['background'] ?? []
 			);
 
-		return compact(
-			'size', 'color', 'font', 'angle', 'offset_x', 'offset_y', 'align', 'alpha',
-			'shadow', 'stroke', 'background'
-			);
+		// NOTE: keep the array keys in camelCase — they are part of the public
+		// text() options API. Local variables use snake_case for consistency
+		// with the rest of the codebase.
+		return [
+			'size'       => $size,
+			'color'      => $color,
+			'font'       => $font,
+			'angle'      => $angle,
+			'offsetX'    => $offset_x,
+			'offsetY'    => $offset_y,
+			'align'      => $align,
+			'alpha'      => $alpha,
+			'shadow'     => $shadow,
+			'stroke'     => $stroke,
+			'background' => $background,
+		];
 	}
 
 	/**

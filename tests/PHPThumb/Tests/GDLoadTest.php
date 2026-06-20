@@ -6,7 +6,7 @@ use InvalidArgumentException;
 use PHPThumb\GD;
 use PHPUnit\Framework\TestCase;
 
-class LoadTest extends TestCase
+class GDLoadTest extends TestCase
 {
 	protected GD $thumb;
 
@@ -19,28 +19,22 @@ class LoadTest extends TestCase
 	{
 		self::assertSame(['width' => 500, 'height' => 375], $this->thumb->getCurrentDimensions());
 		self::assertSame([
-			'resizeUp'				=> false,
-			'jpegQuality'			=> 100,
-			'correctPermissions'	=> false,
-			'preserveAlpha'			=> true,
-			'alphaMaskColor'		=> [
-										0 => 255,
-										1 => 255,
-										2 => 255
-			],
+			'resizeUp'              => false,
+			'avifQuality'           => 100,
+			'jpegQuality'           => 100,
+			'webpQuality'           => 100,
+			'correctPermissions'    => false,
+			'preserveAlpha'         => true,
+			'alphaMaskColor'        => [255, 255, 255],
 			'preserveTransparency'  => true,
-			'transparencyMaskColor' => [
-										0 => 0,
-										1 => 0,
-										2 => 0
-			],
-			'interlace'			 => null,
+			'transparencyMaskColor' => [0, 0, 0],
+			'interlace'             => null,
 			'sharpenAmount'         => 50,
 			'textFont'              => null,
 			'textDefaultSize'       => 12,
 		], $this->thumb->getOptions());
 
-		self::assertSame('JPG', $this->thumb->getFormat());
+		self::assertSame('JPEG', $this->thumb->getFormat());
 		self::assertSame(__DIR__ . '/../../resources/test.jpg', $this->thumb->getFileName());
 	}
 
@@ -58,8 +52,16 @@ class LoadTest extends TestCase
 
 	public function testLoadExternalImage()
 	{
-		$gravatarThumb = new GD('https://en.gravatar.com/userimage/1132703/2ccbcfbea4a1b3b8d955c1e7746b882b.jpg');
-		self::assertSame(true, $gravatarThumb->getIsRemoteImage());
+		if (!getenv('RUN_NETWORK_TESTS'))
+		{
+			$this->markTestSkipped(
+				'Network tests are disabled (set RUN_NETWORK_TESTS=1 to enable). ' .
+				'Note: the previous Gravatar fixture URL has been retired upstream.'
+				);
+		}
+
+		$remoteThumb = new GD('https://raw.githubusercontent.com/PHPThumb/PHPThumb/master/tests/resources/test.jpg');
+		self::assertTrue($remoteThumb->getIsRemoteImage());
 	}
 
 	public function testNonexistentFile()

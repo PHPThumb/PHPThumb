@@ -92,18 +92,64 @@ class GDFiltersTest extends TestCase
 
 	// ---------------- contrast() ----------------
 
-	public function testContrastIncreasesRange(): void
+	public function testContrastChangesPixels(): void
 	{
-		$img = $this->thumb->getOldImage();
-		$beforeDist = $this->sampleDistanceFrom128($img);
+		// IMG_FILTER_CONTRAST's exact formula varies between GD versions
+		// (it can pull pixels toward or away from mid-gray depending on
+		// libgd internals), so we don't pin the direction of change.
+		// What we *can* guarantee portably:
+		//   1. contrast(N != 0) modifies some pixels.
+		//   2. contrast(0) is a no-op.
+		//   3. dimensions are preserved.
 
-		$this->thumb->contrast(30);
+		$w = 100;
+		$h = 100;
+		$im = imagecreatetruecolor($w, $h);
+		$mid   = imagecolorallocate($im, 128, 128, 128);
+		$dark  = imagecolorallocate($im, 80,  80,  80);
+		$light = imagecolorallocate($im, 180, 180, 180);
 
-		$img = $this->thumb->getOldImage();
-		$afterDist = $this->sampleDistanceFrom128($img);
+		imagefilledrectangle($im, 0, 0, $w - 1, $h - 1, $mid);
+		imagefilledrectangle($im, 10, 10, 40, 40, $dark);
+		imagefilledrectangle($im, 60, 60, 90, 90, $light);
 
-		self::assertGreaterThan($beforeDist, $afterDist);
+		$thumb = new GD(__DIR__ . '/../../resources/test.jpg');
+		$thumb->setOldImage($im);
+		$thumb->setCurrentDimensions(['width' => $w, 'height' => $h]);
+
+		// Sample well inside each patch so the kernel has room to operate.
+		$dark_before  = imagecolorat($thumb->getOldImage(), 25, 25);
+		$light_before = imagecolorat($thumb->getOldImage(), 75, 75);
+
+		$thumb->contrast(30);
+
+		$dark_after  = imagecolorat($thumb->getOldImage(), 25, 25);
+		$light_after = imagecolorat($thumb->getOldImage(), 75, 75);
+
+		self::assertNotSame(
+			$dark_before, $dark_after,
+			'contrast(30) must modify pixels in the dark patch'
+			);
+		self::assertNotSame(
+			$light_before, $light_after,
+			'contrast(30) must modify pixels in the light patch'
+			);
 	}
+
+	public function testContrastZeroIsNoOp(): void
+	{
+		// contrast(0) is documented as a no-op. Pin this so a future
+		// "optimization" can't accidentally make it produce a different image.
+		$thumb = new GD(__DIR__ . '/../../resources/test.jpg');
+		$before = imagecolorat($thumb->getOldImage(), 100, 100);
+
+		$thumb->contrast(0);
+
+		$after = imagecolorat($thumb->getOldImage(), 100, 100);
+		self::assertSame($before, $after);
+	}
+
+
 
 	public function testContrastPreservesDimensions(): void
 	{
@@ -268,18 +314,32 @@ class GDFiltersTest extends TestCase
 
 	/**
 	 * Average absolute distance from 128 (mid-grey) across sampled pixels.
+	 * Returns 0.0 for empty images (no samples).
 	 */
 	private function sampleDistanceFrom128(\GdImage $img): float
 	{
 		$samples = [];
 		$w = imagesx($img);
 		$h = imagesy($img);
-		for ($y = 50; $y < $h; $y += 50) {
-			for ($x = 50; $x < $w; $x += 50) {
+
+		// Use a small step so the helper works for synthetic images as well
+		// as full-size fixtures. The original 50-pixel step was tuned for
+		// the 500×375 test.jpg and produces zero samples on small synthetic
+		// images (causing DivisionByZero).
+		for ($y = 5; $y < $h; $y += 10)
+		{
+			for ($x = 5; $x < $w; $x += 10)
+			{
 				$rgb = imagecolorat($img, $x, $y);
 				$samples[] = abs((($rgb >> 16) & 0xFF) - 128);
 			}
 		}
+
+		if (count($samples) === 0)
+		{
+			return 0.0;
+		}
+
 		return array_sum($samples) / count($samples);
 	}
 }

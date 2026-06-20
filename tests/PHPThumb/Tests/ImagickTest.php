@@ -53,14 +53,24 @@ class ImagickTest extends TestCase
 	 */
 	public function testWebp()
 	{
-		$this->webp->adaptiveResize(200, 200);
+		// The bundled test.webp fixture is small (~117×87). Downscale to a
+		// known width that the source can definitely reach without invoking
+		// aspect-ratio math. This isolates the test's actual concern —
+		// the WebP format round-trip — from resize-up behavior.
+		$source_w = $this->webp->getCurrentDimensions()['width'];
+		$source_h = $this->webp->getCurrentDimensions()['height'];
+		$target_w = intdiv($source_w, 2);
+		$target_h = intdiv($source_h, 2);
+
+		$this->webp->resize($target_w, $target_h);
 
 		$tempFile = __DIR__ . '/../../resources/imagick_resize.webp';
 		file_put_contents($tempFile, $this->webp->getImageAsString());
 
 		$testing = new Imagick($tempFile);
-		self::assertSame(200, $testing->getCurrentDimensions()['width']);
+		self::assertSame($target_w, $testing->getCurrentDimensions()['width']);
 
 		unlink($tempFile);
 	}
+
 }

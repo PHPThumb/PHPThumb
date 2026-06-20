@@ -25,16 +25,20 @@ class ImagickFlipTest extends TestCase
 
     public function testFlipHorizontalChangesPixels(): void
     {
-        $before = $this->thumb->getOldImage()
-            ->getImagePixelColor(5, $this->thumb->getCurrentDimensions()['height'] / 2)
-            ->getColor();
+    	$h = $this->thumb->getCurrentDimensions()['height'];
+    	$mid_y = (int) ($h / 2);
 
-        $this->thumb->flip('horizontal');
+    	$before = $this->thumb->getOldImage()
+    	->getImagePixelColor(5, $mid_y)
+    	->getColor();
 
-        $w = $this->thumb->getCurrentDimensions()['width'];
-        $after = $this->thumb->getOldImage()
-            ->getImagePixelColor($w - 5, $this->thumb->getCurrentDimensions()['height'] / 2)
-            ->getColor();
+    	$this->thumb->flip('horizontal');
+
+    	$w = $this->thumb->getCurrentDimensions()['width'];
+    	$after = $this->thumb->getOldImage()
+    	->getImagePixelColor($w - 6, $mid_y)
+    	->getColor();
+
 
         self::assertEqualsWithDelta((int) $before['r'], (int) $after['r'], 5);
         self::assertEqualsWithDelta((int) $before['g'], (int) $after['g'], 5);

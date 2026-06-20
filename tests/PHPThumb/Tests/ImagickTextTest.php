@@ -3,6 +3,7 @@ namespace PHPThumb\Tests;
 
 use InvalidArgumentException;
 use PHPThumb\Imagick;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class ImagickTextTest extends TestCase
@@ -56,9 +57,7 @@ class ImagickTextTest extends TestCase
         self::assertSame(500, $this->thumb->getCurrentDimensions()['width']);
     }
 
-    /**
-     * @dataProvider positionProvider
-     */
+    #[DataProvider('positionProvider')]
     public function testTextAcceptsPositions(string $position): void
     {
         $this->thumb->text('X', $position, ['color' => '#FFFFFF']);

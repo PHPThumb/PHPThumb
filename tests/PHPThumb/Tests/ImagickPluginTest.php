@@ -95,7 +95,9 @@ class ImagickPluginTest extends TestCase
 		$plugin = new class implements PluginInterface {
 			public function execute(PHPThumb $phpthumb): PHPThumb
 			{
-				$phpthumb->resize(50, 50);
+				// Use adaptiveResize so a 50×50 target is achievable from the
+				// 500×375 source (resize() with resizeUp=false would clamp).
+				$phpthumb->adaptiveResize(50, 50);
 				return $phpthumb;
 			}
 		};
