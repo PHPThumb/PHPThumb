@@ -181,29 +181,31 @@ class Imagick extends PHPThumb
 	 */
 	public function border(int $thickness, array|string $color = [0, 0, 0]): Imagick
 	{
-		if ($thickness < 0) {
+		if ($thickness < 0)
+		{
 			throw new InvalidArgumentException(
 				'border() $thickness must be non-negative, got: ' . $thickness
 				);
 		}
 
-		if ($thickness === 0) {
+		if ($thickness === 0)
+		{
 			return $this; // no-op
 		}
 
 		$rgb = $this->parseColor($color);
 
-		$currentWidth  = $this->current_dimensions['width'];
-		$currentHeight = $this->current_dimensions['height'];
+		$current_width  = $this->current_dimensions['width'];
+		$current_height = $this->current_dimensions['height'];
 
-		$newWidth  = $currentWidth  + 2 * $thickness;
-		$newHeight = $currentHeight + 2 * $thickness;
+		$new_width  = $current_width  + 2 * $thickness;
+		$new_height = $current_height + 2 * $thickness;
 
 		// Build the new canvas, filled with the border color.
 		$canvas = new \Imagick();
 		$canvas->newImage(
-			$newWidth,
-			$newHeight,
+			$new_width,
+			$new_height,
 			$this->colorToPixel($rgb)
 			);
 		$canvas->setImageFormat($this->old_image->getImageFormat());
@@ -221,8 +223,8 @@ class Imagick extends PHPThumb
 		$this->old_image->destroy();
 		$this->old_image = $canvas;
 
-		$this->current_dimensions['width']  = $newWidth;
-		$this->current_dimensions['height'] = $newHeight;
+		$this->current_dimensions['width']  = $new_width;
+		$this->current_dimensions['height'] = $new_height;
 
 		return $this;
 	}
@@ -235,9 +237,11 @@ class Imagick extends PHPThumb
 	 */
 	protected function parseColor(array|string $color): array
 	{
-		if (is_array($color)) {
+		if (is_array($color))
+		{
 			$count = count($color);
-			if ($count !== 3 && $count !== 4) {
+			if ($count !== 3 && $count !== 4)
+			{
 				throw new InvalidArgumentException(
 					'border() color array must have 3 (RGB) or 4 (RGBA) elements, got: ' . $count
 					);
@@ -249,28 +253,33 @@ class Imagick extends PHPThumb
 			];
 		}
 
-		if (!is_string($color)) {
+		if (!is_string($color))
+		{
 			throw new InvalidArgumentException(
 				'border() color must be a hex string or an [r, g, b] array.'
 				);
 		}
 
 		$hex = ltrim(trim($color), '#');
-		if (str_starts_with($hex, '0x') || str_starts_with($hex, '0X')) {
+		if (str_starts_with($hex, '0x') || str_starts_with($hex, '0X'))
+		{
 			$hex = substr($hex, 2);
 		}
 
-		if (strlen($hex) === 3) {
+		if (strlen($hex) === 3)
+		{
 			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
 		}
 
-		if (strlen($hex) !== 6 && strlen($hex) !== 8) {
+		if (strlen($hex) !== 6 && strlen($hex) !== 8)
+		{
 			throw new InvalidArgumentException(
 				'border() hex color must be 3, 6, or 8 hex digits (with optional #), got: ' . $color
 				);
 		}
 
-		if (!ctype_xdigit($hex)) {
+		if (!ctype_xdigit($hex))
+		{
 			throw new InvalidArgumentException(
 				'border() hex color contains non-hex characters: ' . $color
 				);
@@ -326,33 +335,38 @@ class Imagick extends PHPThumb
 		string $text,
 		string $position = 'bottom-right',
 		array $options = []
-		): Imagick {
-			if ($text === '') {
+		): Imagick
+		{
+			if ($text === '')
+			{
 				return $this;
 			}
 
 			$cfg = $this->resolveTextOptions($options);
 			$anchor = $this->resolveTextAnchor($position);
 
-			$currentWidth  = $this->current_dimensions['width'];
-			$currentHeight = $this->current_dimensions['height'];
+			$current_width  = $this->current_dimensions['width'];
+			$current_height = $this->current_dimensions['height'];
 
 			// Resolve a usable TTF file path. We must always set a non-empty font
 			// on ImagickDraw, otherwise freetype chokes on the empty default.
-			$fontPath = $this->resolveFont($cfg['font']);
+			$font_path = $this->resolveFont($cfg['font']);
 
 			// Measure the text using Imagick's font metrics.
 			$measure = new \ImagickDraw();
-			$measure->setFont($fontPath);
+			$measure->setFont($font_path);
 			$measure->setFontSize($cfg['size']);
 
-			try {
+			try
+			{
 				$metrics = $this->old_image->queryFontMetrics($measure, $text);
-			} catch (\ImagickException $e) {
+			}
+			catch (\ImagickException $e)
+			{
 				$measure->clear();
 				$measure->destroy();
 				throw new RuntimeException(
-					'Imagick: queryFontMetrics() failed for font "' . $fontPath . '": ' . $e->getMessage(),
+					'Imagick: queryFontMetrics() failed for font "' . $font_path . '": ' . $e->getMessage(),
 					0,
 					$e
 					);
@@ -361,33 +375,35 @@ class Imagick extends PHPThumb
 			$measure->clear();
 			$measure->destroy();
 
-			if ($metrics === false || empty($metrics)) {
+			if ($metrics === false || empty($metrics))
+			{
 				throw new RuntimeException('Imagick: queryFontMetrics() returned empty metrics');
 			}
 
-			$textWidth  = (int) $metrics['textWidth'];
-			$textHeight = (int) $metrics['textHeight'];
+			$text_width  = (int) $metrics['textWidth'];
+			$text_height = (int) $metrics['textHeight'];
 
-			if (isset($metrics['descender'])) {
-				$textHeight += (int) abs($metrics['descender']);
+			if (isset($metrics['descender']))
+			{
+				$text_height += (int) abs($metrics['descender']);
 			}
 
 			[$x, $y] = $this->computeTextTopLeft(
 				$anchor, $cfg['offsetX'], $cfg['offsetY'],
-				$currentWidth, $currentHeight,
-				$textWidth, $textHeight
-				);
+				$current_width, $current_height,
+				$text_width, $text_height
+			);
 
-			$alignConst = match (strtolower($cfg['align'])) {
+			$align_const = match (strtolower($cfg['align'])) {
 				'left'   => \Imagick::ALIGN_LEFT,
 				'right'  => \Imagick::ALIGN_RIGHT,
 				default  => \Imagick::ALIGN_CENTER,
 			};
 
 			$draw = new \ImagickDraw();
-			$draw->setFont($fontPath);
+			$draw->setFont($font_path);
 			$draw->setFontSize($cfg['size']);
-			$draw->setTextAlignment($alignConst);
+			$draw->setTextAlignment($align_const);
 			$draw->setTextAntialias(true);
 
 			$rgb = $this->parseColor($cfg['color']);
@@ -397,78 +413,85 @@ class Imagick extends PHPThumb
 				$cfg['alpha'] / 100
 				)));
 
-			if ($cfg['stroke']['enabled']) {
-				$strokeRgb = $this->parseColor($cfg['stroke']['color']);
+			if ($cfg['stroke']['enabled'])
+			{
+				$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
 				$draw->setStrokeColor(new \ImagickPixel(sprintf(
 					'rgba(%d, %d, %d, 1)',
-					$strokeRgb['r'], $strokeRgb['g'], $strokeRgb['b']
+					$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b']
 					)));
 				$draw->setStrokeWidth(max(1, (int) $cfg['stroke']['width']));
-			} else {
+			}
+			else
+			{
 				$draw->setStrokeColor(new \ImagickPixel('transparent'));
 				$draw->setStrokeWidth(0);
 			}
 
-			if ($cfg['background']['enabled']) {
-				$bgRgb = $this->parseColor($cfg['background']['color']);
+			if ($cfg['background']['enabled'])
+			{
+				$bg_rgb = $this->parseColor($cfg['background']['color']);
 				$padding = (int) ($cfg['background']['padding'] ?? 4);
-				$bgAlpha = max(0, min(100, (int) ($cfg['background']['alpha'] ?? 75))) / 100;
+				$bg_alpha = max(0, min(100, (int) ($cfg['background']['alpha'] ?? 75))) / 100;
 
-				$pillX = max(0, $x - $padding);
-				$pillY = max(0, $y - $padding);
-				$pillW = $textWidth + 2 * $padding;
-				$pillH = $textHeight + 2 * $padding;
+				$pill_x = max(0, $x - $padding);
+				$pill_y = max(0, $y - $padding);
+				$pill_w = $text_width + 2 * $padding;
+				$pill_h = $text_height + 2 * $padding;
 
-				if ($pillX + $pillW > $currentWidth) {
-					$pillW = max(0, $currentWidth - $pillX);
+				if ($pill_x + $pill_w > $current_width)
+				{
+					$pill_w = max(0, $current_width - $pill_x);
 				}
-				if ($pillY + $pillH > $currentHeight) {
-					$pillH = max(0, $currentHeight - $pillY);
+				if ($pill_y + $pill_h > $current_height)
+				{
+					$pill_h = max(0, $current_height - $pill_y);
 				}
 
-				$bgDraw = new \ImagickDraw();
-				$bgDraw->setFillColor(new \ImagickPixel(sprintf(
+				$bg_draw = new \ImagickDraw();
+				$bg_draw->setFillColor(new \ImagickPixel(sprintf(
 					'rgba(%d, %d, %d, %f)',
-					$bgRgb['r'], $bgRgb['g'], $bgRgb['b'],
-					$bgAlpha
+					$bg_rgb['r'], $bg_rgb['g'], $bg_rgb['b'],
+					$bg_alpha
 					)));
-				$bgDraw->rectangle($pillX, $pillY, $pillX + $pillW, $pillY + $pillH);
+				$bg_draw->rectangle($pill_x, $pill_y, $pill_x + $pill_w, $pill_y + $pill_h);
 
-				$this->old_image->drawImage($bgDraw);
-				$bgDraw->clear();
-				$bgDraw->destroy();
+				$this->old_image->drawImage($bg_draw);
+				$bg_draw->clear();
+				$bg_draw->destroy();
 			}
 
-			if ($cfg['shadow']['enabled']) {
-				$shadowRgb = $this->parseColor($cfg['shadow']['color']);
-				$shadowDraw = new \ImagickDraw();
-				$shadowDraw->setFont($fontPath);
-				$shadowDraw->setFontSize($cfg['size']);
-				$shadowDraw->setTextAlignment($alignConst);
-				$shadowDraw->setTextAntialias(true);
-				$shadowDraw->setFillColor(new \ImagickPixel(sprintf(
+			if ($cfg['shadow']['enabled'])
+			{
+				$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
+				$shadow_draw = new \ImagickDraw();
+				$shadow_draw->setFont($font_path);
+				$shadow_draw->setFontSize($cfg['size']);
+				$shadow_draw->setTextAlignment($align_const);
+				$shadow_draw->setTextAntialias(true);
+				$shadow_draw->setFillColor(new \ImagickPixel(sprintf(
 					'rgba(%d, %d, %d, 1)',
-					$shadowRgb['r'], $shadowRgb['g'], $shadowRgb['b']
+					$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b']
 					)));
-				$shadowDraw->setStrokeColor(new \ImagickPixel('transparent'));
-				$shadowDraw->setStrokeWidth(0);
+				$shadow_draw->setStrokeColor(new \ImagickPixel('transparent'));
+				$shadow_draw->setStrokeWidth(0);
 
 				$this->old_image->annotateImage(
-					$shadowDraw,
+					$shadow_draw,
 					$x + $cfg['shadow']['offsetX'],
-					$y + $textHeight + $cfg['shadow']['offsetY'],
+					$y + $text_height + $cfg['shadow']['offsetY'],
 					$cfg['angle'],
 					$text
-					);
+				);
 
-				$shadowDraw->clear();
-				$shadowDraw->destroy();
+				$shadow_draw->clear();
+				$shadow_draw->destroy();
 			}
 
 			$this->old_image->annotateImage(
 				$draw,
 				$x,
-				$y + $textHeight,
+				$y + $text_height,
 				$cfg['angle'],
 				$text
 				);
@@ -502,15 +525,18 @@ class Imagick extends PHPThumb
 	protected function resolveFont(?string $font): string
 	{
 		// Step 1: handle null/empty by deferring to fontconfig default.
-		if ($font === null || $font === '') {
+		if ($font === null || $font === '')
+		{
 			return $this->resolveViaFontconfig('sans-serif')
 			?? $this->resolveViaImagickQuery()
 			?? $this->throwNoFontAvailable();
 		}
 
 		// Step 2: looks like a path? Use it if it exists.
-		if ($this->looksLikeFontPath($font)) {
-			if (is_file($font)) {
+		if ($this->looksLikeFontPath($font))
+		{
+			if (is_file($font))
+			{
 				return $font;
 			}
 			// Non-existent path → don't throw, fall through to default.
@@ -521,23 +547,29 @@ class Imagick extends PHPThumb
 
 		// Step 3: treat as a family name; ask fontconfig.
 		$resolved = $this->resolveViaFontconfig($font);
-		if ($resolved !== null) {
+		if ($resolved !== null)
+		{
 			return $resolved;
 		}
 
 		// Step 4: ask Imagick's own registry for that name. If it's there, the
 		// string is itself usable by setFont() on this build. Otherwise fall back
 		// to the system default.
-		try {
+		try
+		{
 			$registered = \Imagick::queryFonts();
-			foreach ($registered as $family) {
-				if (strcasecmp($family, $font) === 0) {
+			foreach ($registered as $family)
+			{
+				if (strcasecmp($family, $font) === 0)
+				{
 					// Found — return the family name itself; setFont() can resolve it
 					// on legacy builds.
 					return $family;
 				}
 			}
-		} catch (\Throwable) {
+		}
+		catch (\Throwable)
+		{
 			// queryFonts() unavailable on this build.
 		}
 
@@ -551,13 +583,16 @@ class Imagick extends PHPThumb
 	 */
 	protected function looksLikeFontPath(string $font): bool
 	{
-		if (str_contains($font, '/') || str_contains($font, '\\')) {
+		if (str_contains($font, '/') || str_contains($font, '\\'))
+		{
 			return true;
 		}
 
 		$lower = strtolower($font);
-		foreach (['.ttf', '.otf', '.ttc'] as $ext) {
-			if (str_ends_with($lower, $ext)) {
+		foreach (['.ttf', '.otf', '.ttc'] as $ext)
+		{
+			if (str_ends_with($lower, $ext))
+			{
 				return true;
 			}
 		}
@@ -573,14 +608,16 @@ class Imagick extends PHPThumb
 	 */
 	protected function resolveViaFontconfig(string $family): ?string
 	{
-		if (!$this->fontconfigAvailable()) {
+		if (!$this->fontconfigAvailable())
+		{
 			return null;
 		}
 
 		$cmd = 'fc-match -f "%{file}" ' . escapeshellarg($family) . ' 2>/dev/null';
 		$path = trim((string) @shell_exec($cmd));
 
-		if ($path === '' || !is_file($path)) {
+		if ($path === '' || !is_file($path))
+		{
 			return null;
 		}
 
@@ -596,13 +633,17 @@ class Imagick extends PHPThumb
 	 */
 	protected function resolveViaImagickQuery(): ?string
 	{
-		try {
+		try
+		{
 			$registered = \Imagick::queryFonts();
-		} catch (\Throwable) {
+		}
+		catch (\Throwable)
+		{
 			return null;
 		}
 
-		if (empty($registered)) {
+		if (empty($registered))
+		{
 			return null;
 		}
 
@@ -616,7 +657,8 @@ class Imagick extends PHPThumb
 	{
 		static $available = null;
 
-		if ($available !== null) {
+		if ($available !== null)
+		{
 			return $available;
 		}
 
@@ -653,8 +695,8 @@ class Imagick extends PHPThumb
 		?? null;
 
 		$angle    = (float) ($options['angle']    ?? 0);
-		$offsetX  = (int)   ($options['offsetX']  ?? 10);
-		$offsetY  = (int)   ($options['offsetY']  ?? 10);
+		$offset_x = (int)   ($options['offsetX']  ?? 10);
+		$offset_y = (int)   ($options['offsetY']  ?? 10);
 		$align    = (string)($options['align']    ?? 'center');
 		$alpha    = max(0, min(100, (int) ($options['alpha'] ?? 100)));
 
@@ -672,7 +714,7 @@ class Imagick extends PHPThumb
 			);
 
 		return compact(
-			'size', 'color', 'font', 'angle', 'offsetX', 'offsetY', 'align', 'alpha',
+			'size', 'color', 'font', 'angle', 'offset_x', 'offset_y', 'align', 'alpha',
 			'shadow', 'stroke', 'background'
 			);
 	}
@@ -687,20 +729,27 @@ class Imagick extends PHPThumb
 		$p = strtolower(trim($position));
 
 		$h = 'center';
-		if (str_contains($p, 'left') || str_contains($p, 'west')) {
+		if (str_contains($p, 'left') || str_contains($p, 'west'))
+		{
 			$h = 'left';
-		} elseif (str_contains($p, 'right') || str_contains($p, 'east')) {
+		}
+		elseif (str_contains($p, 'right') || str_contains($p, 'east'))
+		{
 			$h = 'right';
 		}
 
 		$v = 'center';
-		if (str_contains($p, 'top') || str_contains($p, 'north') || str_contains($p, 'upper')) {
+		if (str_contains($p, 'top') || str_contains($p, 'north') || str_contains($p, 'upper'))
+		{
 			$v = 'top';
-		} elseif (str_contains($p, 'bottom') || str_contains($p, 'south') || str_contains($p, 'lower')) {
+		}
+		elseif (str_contains($p, 'bottom') || str_contains($p, 'south') || str_contains($p, 'lower'))
+		{
 			$v = 'bottom';
 		}
 
-		if ($h === 'center' && $v === 'center' && $p !== 'center') {
+		if ($h === 'center' && $v === 'center' && $p !== 'center')
+		{
 			throw new InvalidArgumentException(
 				"Unknown text() position: '$position'. " .
 				"Expected 'top-left', 'top', 'top-right', 'left', 'center', 'right', " .
@@ -721,22 +770,23 @@ class Imagick extends PHPThumb
 	 */
 	protected function computeTextTopLeft(
 		array $anchor,
-		int $offsetX, int $offsetY,
-		int $canvasW, int $canvasH,
-		int $textW, int $textH
-		): array {
-			[$hAnchor, $vAnchor] = $anchor;
+		int $offset_x, int $offset_y,
+		int $canvas_w, int $canvas_h,
+		int $text_w, int $text_h
+		): array
+		{
+			[$h_anchor, $v_anchor] = $anchor;
 
-			$x = match ($hAnchor) {
-				'left'   => $offsetX,
-				'right'  => $canvasW - $textW - $offsetX,
-				default  => (int) (($canvasW - $textW) / 2),
+			$x = match ($h_anchor) {
+				'left'   => $offset_x,
+				'right'  => $canvas_w - $text_w - $offset_x,
+				default  => (int) (($canvas_w - $text_w) / 2),
 			};
 
-			$y = match ($vAnchor) {
-				'top'    => $offsetY,
-				'bottom' => $canvasH - $textH - $offsetY,
-				default  => (int) (($canvasH - $textH) / 2),
+			$y = match ($v_anchor) {
+				'top'    => $offset_y,
+				'bottom' => $canvas_h - $text_h - $offset_y,
+				default  => (int) (($canvas_h - $text_h) / 2),
 			};
 
 			return [$x, $y];
@@ -1018,7 +1068,7 @@ class Imagick extends PHPThumb
 	 */
 	public function rotateImage(string $direction = 'CW'): Imagick
 	{
-		$degrees = match($direction) {
+		$degrees = match ($direction) {
 			'CW'    => 90,
 			default => -90,
 		};
@@ -1066,7 +1116,8 @@ class Imagick extends PHPThumb
 	{
 		$normalized = strtolower(trim($direction));
 
-		switch ($normalized) {
+		switch ($normalized)
+		{
 			case 'horizontal':
 			case 'h':
 			case 'lr':
@@ -1114,21 +1165,22 @@ class Imagick extends PHPThumb
 		$orientation = $this->old_image->getImageOrientation();
 
 		if ($orientation === \Imagick::ORIENTATION_UNDEFINED
-			|| $orientation === \Imagick::ORIENTATION_TOPLEFT) {
-				return $this;
-			}
-
-			// Imagick::autoOrient() rewrites the pixel buffer AND resets the
-			// orientation tag to TOPLEFT, so calling it twice is safe and idempotent.
-			$this->old_image->autoOrient();
-
-			// Refresh dimensions — rotation may have changed them.
-			$this->current_dimensions = [
-				'width'  => $this->old_image->getImageWidth(),
-				'height' => $this->old_image->getImageHeight(),
-			];
-
+			|| $orientation === \Imagick::ORIENTATION_TOPLEFT)
+		{
 			return $this;
+		}
+
+		// Imagick::autoOrient() rewrites the pixel buffer AND resets the
+		// orientation tag to TOPLEFT, so calling it twice is safe and idempotent.
+		$this->old_image->autoOrient();
+
+		// Refresh dimensions — rotation may have changed them.
+		$this->current_dimensions = [
+			'width'  => $this->old_image->getImageWidth(),
+			'height' => $this->old_image->getImageHeight(),
+		];
+
+		return $this;
 	}
 
 	/**
@@ -1249,12 +1301,12 @@ class Imagick extends PHPThumb
 	 */
 	public function brightness(int $level): Imagick
 	{
-		$imagickLevel = 100 + $level;
+		$imagick_level = 100 + $level;
 		// Clamp to a sane range. Imagick accepts negatives but the visible
 		// effect becomes all-black well before that.
-		$imagickLevel = max(0, $imagickLevel);
+		$imagick_level = max(0, $imagick_level);
 
-		$this->old_image->modulateImage($imagickLevel, 100, 100);
+		$this->old_image->modulateImage($imagick_level, 100, 100);
 
 		return $this;
 	}
@@ -1298,19 +1350,19 @@ class Imagick extends PHPThumb
 	 * image down to $blockSize-pixel blocks and then back to the original
 	 * dimensions. The visual result is the same as GD's IMG_FILTER_PIXELATE.
 	 *
-	 * @param int $blockSize Pixel block size in pixels. Must be >= 1.
-	 *                       $blockSize = 1 is a no-op.
+	 * @param int $block_size Pixel block size in pixels. Must be >= 1.
+	 *                        $block_size = 1 is a no-op.
 	 */
-	public function pixelate(int $blockSize = 10): Imagick
+	public function pixelate(int $block_size = 10): Imagick
 	{
-		if ($blockSize < 1)
+		if ($block_size < 1)
 		{
 			throw new InvalidArgumentException(
-				'pixelate() $blockSize must be >= 1, got: ' . $blockSize
+				'pixelate() $block_size must be >= 1, got: ' . $block_size
 				);
 		}
 
-		if ($blockSize === 1)
+		if ($block_size === 1)
 		{
 			return $this; // no-op
 		}
@@ -1318,12 +1370,12 @@ class Imagick extends PHPThumb
 		$w = $this->old_image->getImageWidth();
 		$h = $this->old_image->getImageHeight();
 
-		$smallW = max(1, (int) floor($w / $blockSize));
-		$smallH = max(1, (int) floor($h / $blockSize));
+		$small_w = max(1, (int) floor($w / $block_size));
+		$small_h = max(1, (int) floor($h / $block_size));
 
 		// Scale down to the block grid, then scale back up. The resulting
 		// pixelation looks the same as a native pixelate filter.
-		$this->old_image->scaleImage($smallW, $smallH);
+		$this->old_image->scaleImage($small_w, $small_h);
 		$this->old_image->scaleImage($w, $h);
 
 		// Refresh dimensions — they should be unchanged after the round-trip,
@@ -1461,10 +1513,10 @@ class Imagick extends PHPThumb
 		$this->old_image->setImageFormat($output_format);
 
 		$quality = match ($output_format) {
-			'AVIF'  => $this->options['avifQuality'],
+			'AVIF'      => $this->options['avifQuality'],
 			'JPEG', 'JPG' => $this->options['jpegQuality'],
-			'WEBP'  => $this->options['webpQuality'],
-			default => null,
+			'WEBP'      => $this->options['webpQuality'],
+			default     => null,
 		};
 
 		if ($quality !== null)

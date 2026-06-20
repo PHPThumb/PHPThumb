@@ -183,48 +183,52 @@ class GD extends PHPThumb
 	 */
 	public function border(int $thickness, array|string $color = [0, 0, 0]): GD
 	{
-		if ($thickness < 0) {
+		if ($thickness < 0)
+		{
 			throw new InvalidArgumentException(
 				'border() $thickness must be non-negative, got: ' . $thickness
 				);
 		}
 
-		if ($thickness === 0) {
+		if ($thickness === 0)
+		{
 			return $this; // no-op
 		}
 
 		$rgb = $this->parseColor($color);
 
-		$currentWidth  = $this->current_dimensions['width'];
-		$currentHeight = $this->current_dimensions['height'];
+		$current_width  = $this->current_dimensions['width'];
+		$current_height = $this->current_dimensions['height'];
 
-		$newWidth  = $currentWidth  + 2 * $thickness;
-		$newHeight = $currentHeight + 2 * $thickness;
+		$new_width  = $current_width  + 2 * $thickness;
+		$new_height = $current_height + 2 * $thickness;
 
 		// Build the new canvas, filled with the border color.
-		$this->working_image = imagecreatetruecolor($newWidth, $newHeight);
+		$this->working_image = imagecreatetruecolor($new_width, $new_height);
 
-		if ($this->working_image === false) {
+		if ($this->working_image === false)
+		{
 			throw new RuntimeException('GD: failed to create canvas for border()');
 		}
 
-		$borderColor = imagecolorallocate(
+		$border_color = imagecolorallocate(
 			$this->working_image,
 			$rgb['r'],
 			$rgb['g'],
 			$rgb['b']
 			);
 
-		if ($borderColor === false) {
+		if ($border_color === false)
+		{
 			throw new RuntimeException('GD: failed to allocate border color');
 		}
 
 		imagefilledrectangle(
 			$this->working_image,
 			0, 0,
-			$newWidth, $newHeight,
-			$borderColor
-			);
+			$new_width, $new_height,
+			$border_color
+		);
 
 		// Preserve alpha when the source is PNG so the original's transparent
 		// pixels stay transparent in the center.
@@ -242,14 +246,14 @@ class GD extends PHPThumb
 			$thickness,
 			0,
 			0,
-			$currentWidth,
-			$currentHeight
-			);
+			$current_width,
+			$current_height
+		);
 
 		// Commit.
 		$this->old_image                 = $this->working_image;
-		$this->current_dimensions['width']  = $newWidth;
-		$this->current_dimensions['height'] = $newHeight;
+		$this->current_dimensions['width']  = $new_width;
+		$this->current_dimensions['height'] = $new_height;
 
 		return $this;
 	}
@@ -264,9 +268,11 @@ class GD extends PHPThumb
 	 */
 	protected function parseColor(array|string $color): array
 	{
-		if (is_array($color)) {
+		if (is_array($color))
+		{
 			$count = count($color);
-			if ($count !== 3 && $count !== 4) {
+			if ($count !== 3 && $count !== 4)
+			{
 				throw new InvalidArgumentException(
 					'border() color array must have 3 (RGB) or 4 (RGBA) elements, got: ' . $count
 					);
@@ -279,7 +285,8 @@ class GD extends PHPThumb
 			];
 		}
 
-		if (!is_string($color)) {
+		if (!is_string($color))
+		{
 			throw new InvalidArgumentException(
 				'border() color must be a hex string or an [r, g, b] array.'
 				);
@@ -287,22 +294,26 @@ class GD extends PHPThumb
 
 		$hex = ltrim(trim($color), '#');
 		// Optional '0x' prefix
-		if (str_starts_with($hex, '0x') || str_starts_with($hex, '0X')) {
+		if (str_starts_with($hex, '0x') || str_starts_with($hex, '0X'))
+		{
 			$hex = substr($hex, 2);
 		}
 
 		// Expand shorthand #abc → #aabbcc
-		if (strlen($hex) === 3) {
+		if (strlen($hex) === 3)
+		{
 			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
 		}
 
-		if (strlen($hex) !== 6 && strlen($hex) !== 8) {
+		if (strlen($hex) !== 6 && strlen($hex) !== 8)
+		{
 			throw new InvalidArgumentException(
 				'border() hex color must be 3, 6, or 8 hex digits (with optional #), got: ' . $color
 				);
 		}
 
-		if (!ctype_xdigit($hex)) {
+		if (!ctype_xdigit($hex))
+		{
 			throw new InvalidArgumentException(
 				'border() hex color contains non-hex characters: ' . $color
 				);
@@ -357,92 +368,107 @@ class GD extends PHPThumb
 		string $text,
 		string $position = 'bottom-right',
 		array $options = []
-		): GD {
-			if ($text === '') {
+		): GD
+		{
+			if ($text === '')
+			{
 				return $this; // no-op
 			}
 
 			$cfg = $this->resolveTextOptions($options);
 			$anchor = $this->resolveTextAnchor($position);
 
-			$currentWidth  = $this->current_dimensions['width'];
-			$currentHeight = $this->current_dimensions['height'];
+			$current_width  = $this->current_dimensions['width'];
+			$current_height = $this->current_dimensions['height'];
 
-			$useTtf = $cfg['font'] !== null && function_exists('imagettftext');
+			$use_ttf = $cfg['font'] !== null && function_exists('imagettftext');
 
-			if ($useTtf) {
+			if ($use_ttf)
+			{
 				$lines = explode("\n", $text);
-				$lineHeight = (int) round($cfg['size'] * 1.2);
+				$line_height = (int) round($cfg['size'] * 1.2);
 
-				$maxLineWidth = 0;
-				foreach ($lines as $line) {
+				$max_line_width = 0;
+				foreach ($lines as $line)
+				{
 					$box = imagettfbbox($cfg['size'], $cfg['angle'], $cfg['font'], $line);
-					if ($box === false) {
+					if ($box === false)
+					{
 						throw new RuntimeException(
 							'GD imagettfbbox() failed for font: ' . $cfg['font']
 							);
 					}
-					$lineW = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
-					if ($lineW > $maxLineWidth) {
-						$maxLineWidth = $lineW;
+					$line_w = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
+					if ($line_w > $max_line_width)
+					{
+						$max_line_width = $line_w;
 					}
 				}
 
-				$textWidth  = $maxLineWidth;
-				$textHeight = $lineHeight * count($lines);
+				$text_width  = $max_line_width;
+				$text_height = $line_height * count($lines);
 
-				// === FIX: destructure the anchor array ===
 				[$x, $y] = $this->computeTextTopLeft(
 					$anchor, $cfg['offsetX'], $cfg['offsetY'],
-					$currentWidth, $currentHeight,
-					$textWidth, $textHeight
+					$current_width, $current_height,
+					$text_width, $text_height
 					);
 
-				if ($cfg['background']['enabled']) {
+				if ($cfg['background']['enabled'])
+				{
 					$this->drawTextBackgroundGd(
-						$x, $y, $textWidth, $textHeight,
+						$x, $y, $text_width, $text_height,
 						$cfg['background']
 						);
 				}
 
-				if ($cfg['shadow']['enabled']) {
-					$shadowRgb = $this->parseColor($cfg['shadow']['color']);
-					$shadowColor = imagecolorallocatealpha(
+				if ($cfg['shadow']['enabled'])
+				{
+					$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
+					$shadow_color = imagecolorallocatealpha(
 						$this->old_image,
-						$shadowRgb['r'], $shadowRgb['g'], $shadowRgb['b'],
+						$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b'],
 						$this->alphaToGd127(100)
 						);
-					if ($shadowColor !== false) {
+					if ($shadow_color !== false)
+					{
 						imagettftext(
 							$this->old_image,
 							$cfg['size'], $cfg['angle'],
 							$x + $cfg['shadow']['offsetX'],
-							$y + $cfg['shadow']['offsetY'] + $lineHeight,
-							$shadowColor,
+							$y + $cfg['shadow']['offsetY'] + $line_height,
+							$shadow_color,
 							$cfg['font'],
 							implode("\n", $lines)
 							);
 					}
 				}
 
-				if ($cfg['stroke']['enabled']) {
-					$strokeRgb = $this->parseColor($cfg['stroke']['color']);
-					$strokeColor = imagecolorallocatealpha(
+				if ($cfg['stroke']['enabled'])
+				{
+					$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
+					$stroke_color = imagecolorallocatealpha(
 						$this->old_image,
-						$strokeRgb['r'], $strokeRgb['g'], $strokeRgb['b'],
+						$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b'],
 						$this->alphaToGd127(100)
 						);
-					if ($strokeColor !== false) {
-						$strokeW = max(1, (int) $cfg['stroke']['width']);
-						for ($sx = -$strokeW; $sx <= $strokeW; $sx++) {
-							for ($sy = -$strokeW; $sy <= $strokeW; $sy++) {
-								if ($sx === 0 && $sy === 0) continue;
+					if ($stroke_color !== false)
+					{
+						$stroke_w = max(1, (int) $cfg['stroke']['width']);
+						for ($sx = -$stroke_w; $sx <= $stroke_w; $sx++)
+						{
+							for ($sy = -$stroke_w; $sy <= $stroke_w; $sy++)
+							{
+								if ($sx === 0 && $sy === 0)
+								{
+									continue;
+								}
 								imagettftext(
 									$this->old_image,
 									$cfg['size'], $cfg['angle'],
 									$x + $sx,
-									$y + $sy + $lineHeight,
-									$strokeColor,
+									$y + $sy + $line_height,
+									$stroke_color,
 									$cfg['font'],
 									implode("\n", $lines)
 									);
@@ -452,12 +478,13 @@ class GD extends PHPThumb
 				}
 
 				$rgb = $this->parseColor($cfg['color']);
-				$textColor = imagecolorallocatealpha(
+				$text_color = imagecolorallocatealpha(
 					$this->old_image,
 					$rgb['r'], $rgb['g'], $rgb['b'],
 					$this->alphaToGd127($cfg['alpha'])
 					);
-				if ($textColor === false) {
+				if ($text_color === false)
+				{
 					throw new RuntimeException('GD: failed to allocate text color');
 				}
 
@@ -465,57 +492,63 @@ class GD extends PHPThumb
 					$this->old_image,
 					$cfg['size'], $cfg['angle'],
 					$x,
-					$y + $lineHeight,
-					$textColor,
+					$y + $line_height,
+					$text_color,
 					$cfg['font'],
 					implode("\n", $lines)
 					);
-			} else {
+			}
+			else
+			{
 				// Built-in GD font fallback
 				$font = 5;
-				$charW = imagefontwidth($font);
-				$charH = imagefontheight($font);
+				$char_w = imagefontwidth($font);
+				$char_h = imagefontheight($font);
 
 				$lines = explode("\n", $text);
-				$maxLineWidth = 0;
-				foreach ($lines as $line) {
-					$lw = strlen($line) * $charW;
-					if ($lw > $maxLineWidth) {
-						$maxLineWidth = $lw;
+				$max_line_width = 0;
+				foreach ($lines as $line)
+				{
+					$lw = strlen($line) * $char_w;
+					if ($lw > $max_line_width)
+					{
+						$max_line_width = $lw;
 					}
 				}
 
-				$textWidth  = $maxLineWidth;
-				$textHeight = $charH * count($lines);
+				$text_width  = $max_line_width;
+				$text_height = $char_h * count($lines);
 
-				// === FIX: destructure the anchor array ===
 				[$x, $y] = $this->computeTextTopLeft(
 					$anchor, $cfg['offsetX'], $cfg['offsetY'],
-					$currentWidth, $currentHeight,
-					$textWidth, $textHeight
+					$current_width, $current_height,
+					$text_width, $text_height
 					);
 
-				if ($cfg['background']['enabled']) {
+				if ($cfg['background']['enabled'])
+				{
 					$this->drawTextBackgroundGd(
-						$x, $y, $textWidth, $textHeight,
+						$x, $y, $text_width, $text_height,
 						$cfg['background']
 						);
 				}
 
 				$rgb = $this->parseColor($cfg['color']);
-				$textColor = imagecolorallocatealpha(
+				$text_color = imagecolorallocatealpha(
 					$this->old_image,
 					$rgb['r'], $rgb['g'], $rgb['b'],
 					$this->alphaToGd127($cfg['alpha'])
 					);
-				if ($textColor === false) {
+				if ($text_color === false)
+				{
 					throw new RuntimeException('GD: failed to allocate text color');
 				}
 
 				$yy = $y;
-				foreach ($lines as $line) {
-					imagestring($this->old_image, $font, $x, $yy, $line, $textColor);
-					$yy += $charH;
+				foreach ($lines as $line)
+				{
+					imagestring($this->old_image, $font, $x, $yy, $line, $text_color);
+					$yy += $char_h;
 				}
 			}
 
@@ -543,8 +576,8 @@ class GD extends PHPThumb
 		?? null;
 
 		$angle    = (float) ($options['angle']    ?? 0);
-		$offsetX  = (int)   ($options['offsetX']  ?? 10);
-		$offsetY  = (int)   ($options['offsetY']  ?? 10);
+		$offset_x = (int)   ($options['offsetX']  ?? 10);
+		$offset_y = (int)   ($options['offsetY']  ?? 10);
 		$align    = (string)($options['align']    ?? 'center');
 		$alpha    = max(0, min(100, (int) ($options['alpha'] ?? 100)));
 
@@ -562,7 +595,7 @@ class GD extends PHPThumb
 			);
 
 		return compact(
-			'size', 'color', 'font', 'angle', 'offsetX', 'offsetY', 'align', 'alpha',
+			'size', 'color', 'font', 'angle', 'offset_x', 'offset_y', 'align', 'alpha',
 			'shadow', 'stroke', 'background'
 			);
 	}
@@ -580,21 +613,28 @@ class GD extends PHPThumb
 
 		// Horizontal
 		$h = 'center';
-		if (str_contains($p, 'left') || str_contains($p, 'west')) {
+		if (str_contains($p, 'left') || str_contains($p, 'west'))
+		{
 			$h = 'left';
-		} elseif (str_contains($p, 'right') || str_contains($p, 'east')) {
+		}
+		elseif (str_contains($p, 'right') || str_contains($p, 'east'))
+		{
 			$h = 'right';
 		}
 
 		// Vertical
 		$v = 'center';
-		if (str_contains($p, 'top') || str_contains($p, 'north') || str_contains($p, 'upper')) {
+		if (str_contains($p, 'top') || str_contains($p, 'north') || str_contains($p, 'upper'))
+		{
 			$v = 'top';
-		} elseif (str_contains($p, 'bottom') || str_contains($p, 'south') || str_contains($p, 'lower')) {
+		}
+		elseif (str_contains($p, 'bottom') || str_contains($p, 'south') || str_contains($p, 'lower'))
+		{
 			$v = 'bottom';
 		}
 
-		if ($h === 'center' && $v === 'center' && $p !== 'center') {
+		if ($h === 'center' && $v === 'center' && $p !== 'center')
+		{
 			// Couldn't match any keyword
 			throw new InvalidArgumentException(
 				"Unknown text() position: '$position'. " .
@@ -613,27 +653,27 @@ class GD extends PHPThumb
 	 * (x, y) at which the text should be drawn so that its bounding box lands on
 	 * the requested anchor.
 	 *
-	 * @param string $h left|center|right
-	 * @param string $v top|center|bottom
+	 * @param array{0: string, 1: string} $anchor
 	 */
 	protected function computeTextTopLeft(
 		array $anchor,
-		int $offsetX, int $offsetY,
-		int $canvasW, int $canvasH,
-		int $textW, int $textH
-		): array {
-			[$hAnchor, $vAnchor] = $anchor;
+		int $offset_x, int $offset_y,
+		int $canvas_w, int $canvas_h,
+		int $text_w, int $text_h
+		): array
+		{
+			[$h_anchor, $v_anchor] = $anchor;
 
-			$x = match ($hAnchor) {
-				'left'   => $offsetX,
-				'right'  => $canvasW - $textW - $offsetX,
-				default  => (int) (($canvasW - $textW) / 2),
+			$x = match ($h_anchor) {
+				'left'   => $offset_x,
+				'right'  => $canvas_w - $text_w - $offset_x,
+				default  => (int) (($canvas_w - $text_w) / 2),
 			};
 
-			$y = match ($vAnchor) {
-				'top'    => $offsetY,
-				'bottom' => $canvasH - $textH - $offsetY,
-				default  => (int) (($canvasH - $textH) / 2),
+			$y = match ($v_anchor) {
+				'top'    => $offset_y,
+				'bottom' => $canvas_h - $text_h - $offset_y,
+				default  => (int) (($canvas_h - $text_h) / 2),
 			};
 
 			return [$x, $y];
@@ -653,23 +693,25 @@ class GD extends PHPThumb
 	 */
 	protected function drawTextBackgroundGd(
 		int $x, int $y, int $w, int $h, array $bg
-		): void {
+		): void
+		{
 			$padding = (int) ($bg['padding'] ?? 4);
 			$rgb = $this->parseColor($bg['color']);
-			$bgColor = imagecolorallocatealpha(
+			$bg_color = imagecolorallocatealpha(
 				$this->old_image,
 				$rgb['r'], $rgb['g'], $rgb['b'],
 				$this->alphaToGd127((int) ($bg['alpha'] ?? 75))
-				);
-			if ($bgColor === false) {
+			);
+			if ($bg_color === false)
+			{
 				return;
 			}
 			imagefilledrectangle(
 				$this->old_image,
 				$x - $padding, $y - $padding,
 				$x + $w + $padding, $y + $h + $padding,
-				$bgColor
-				);
+				$bg_color
+			);
 	}
 
 	/**
@@ -1112,7 +1154,7 @@ class GD extends PHPThumb
 	 */
 	public function rotateImage(string $direction = 'CW'): GD
 	{
-		$degrees = match($direction) {
+		$degrees = match ($direction) {
 			'CW'		=> 90,
 			default		=> -90,
 		};
@@ -1183,7 +1225,7 @@ class GD extends PHPThumb
 			throw new RuntimeException('GD imageflip() failed.');
 		}
 
-		// imageflip() does not change dimensions, but keep this_working_image in sync.
+		// imageflip() does not change dimensions, but keep working_image in sync.
 		$this->working_image = $this->old_image;
 
 		return $this;
@@ -1222,29 +1264,34 @@ class GD extends PHPThumb
 	public function autoOrient(): GD
 	{
 		// Graceful no-op when EXIF extension isn't available.
-		if (!function_exists('exif_read_data')) {
+		if (!function_exists('exif_read_data'))
+		{
 			return $this;
 		}
 
 		// Only JPEG reliably carries EXIF in GD's toolchain. For other formats,
 		// silently skip — Imagick handles them natively via its own autoOrient().
-		if ($this->format !== 'JPEG') {
+		if ($this->format !== 'JPEG')
+		{
 			return $this;
 		}
 
 		$exif = @exif_read_data($this->file_name, 'IFD0', false, false);
 
-		if (!is_array($exif) || !isset($exif['Orientation'])) {
+		if (!is_array($exif) || !isset($exif['Orientation']))
+		{
 			return $this;
 		}
 
 		$orientation = (int) $exif['Orientation'];
 
-		if ($orientation === 1 || $orientation < 1 || $orientation > 8) {
+		if ($orientation === 1 || $orientation < 1 || $orientation > 8)
+		{
 			return $this;
 		}
 
-		switch ($orientation) {
+		switch ($orientation)
+		{
 			case 2: // mirror horizontal
 				imageflip($this->old_image, IMG_FLIP_HORIZONTAL);
 				break;
@@ -1355,22 +1402,14 @@ class GD extends PHPThumb
 		// The 3x3 high-pass kernel produces an unsharp-mask-like effect when
 		// the central weight is biased toward "amount".
 		//
-		// Standard "sharpen more" kernel:   Standard "sharpen" kernel:
-		//   -1 -1 -1                          -1 -1 -1
-		//   -1 16 -1      (16 → 8 + amount*8)  -1 12 -1     (12 → 8 + amount*4)
-		//   -1 -1 -1                          -1 -1 -1
-		//
-		// We blend between the two based on $amount.
+		// For a 3x3 kernel of all -1 with center c, the sum of all weights
+		// is c - 8. imageconvolution() divides by the divisor argument, so
+		// divisor must equal that sum — otherwise flat regions are scaled
+		// by (c-8)/c. The `max(9, …)` clamp keeps the center weight above 8
+		// so the divisor is never zero (which would happen for very small
+		// amounts once rounded).
 		$bias = $amount / 100.0;
 
-		// Center weight: 8 + 8*bias (range 8..16 for bias in [0, 1]).
-		// For a 3x3 kernel of all -1 with center c, the sum of all weights
-		// is c - 8. To preserve brightness on uniform regions, divisor must
-		// equal that sum — otherwise flat regions are scaled by (c-8)/c.
-		//
-		// The `max(9, …)` clamp keeps the center weight above 8 so the
-		// divisor is never zero (which would happen for very small amounts
-		// once rounded).
 		$center = max(9, (int) round(8 + (8 * $bias)));
 		$divisor = $center - 8;
 		$offset = 0;
@@ -1509,25 +1548,25 @@ class GD extends PHPThumb
 	 *
 	 * Wraps IMG_FILTER_PIXELATE. The image dimensions are unchanged.
 	 *
-	 * @param int $blockSize Pixel block size in pixels. Must be >= 1.
-	 *                       $blockSize = 1 is a no-op.
+	 * @param int $block_size Pixel block size in pixels. Must be >= 1.
+	 *                        $block_size = 1 is a no-op.
 	 */
-	public function pixelate(int $blockSize = 10): GD
+	public function pixelate(int $block_size = 10): GD
 	{
-		if ($blockSize < 1)
+		if ($block_size < 1)
 		{
 			throw new InvalidArgumentException(
-				'pixelate() $blockSize must be >= 1, got: ' . $blockSize
+				'pixelate() $block_size must be >= 1, got: ' . $block_size
 				);
 		}
 
-		if ($blockSize === 1)
+		if ($block_size === 1)
 		{
 			return $this; // no-op
 		}
 
-		// GD's pixelate takes (blockSize, use_advanced_effect).
-		return $this->applyGdFilter(IMG_FILTER_PIXELATE, $blockSize, true);
+		// GD's pixelate takes (block_size, use_advanced_effect).
+		return $this->applyGdFilter(IMG_FILTER_PIXELATE, $block_size, true);
 	}
 
 	/**
@@ -1598,7 +1637,8 @@ class GD extends PHPThumb
 			imageinterlace($this->old_image, 0);
 		}
 
-		switch ($this->format) {
+		switch ($this->format)
+		{
 			case 'AVIF':
 				if ($raw_data === false)
 				{
@@ -1670,10 +1710,10 @@ class GD extends PHPThumb
 	 */
 	public function save(string $file_name, ?string $format = null): GD
 	{
-		$validFormats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
+		$valid_formats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
 		$format			= ($format !== null) ? strtoupper($format) : $this->format;
 
-		if (!in_array($format, $validFormats))
+		if (!in_array($format, $valid_formats))
 		{
 			throw new InvalidArgumentException('Invalid format type specified in save function: ' . $format);
 		}
@@ -2158,6 +2198,6 @@ class GD extends PHPThumb
 
 			imagepalettecopy($palette_image, $this->working_image);
 			imagepalettecopy($this->working_image, $palette_image);
-        }
+		}
 	}
 }
