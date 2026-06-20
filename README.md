@@ -793,18 +793,34 @@ Test fixtures live in `tests/resources/`.
 Run only the GD tests:
 
 ```bash
-vendor/bin/phpunit tests/PHPThumb/Tests/GDTest.php tests/PHPThumb/Tests/LoadTest.php
+vendor/bin/phpunit tests/PHPThumb/Tests/GDAutoOrientTest.php \
+                   tests/PHPThumb/Tests/GDBorderTest.php \
+                   tests/PHPThumb/Tests/GDFiltersTest.php \
+                   tests/PHPThumb/Tests/GDFlipTest.php \
+                   tests/PHPThumb/Tests/GDGammaTest.php \
+                   tests/PHPThumb/Tests/GDLoadTest.php \
+                   tests/PHPThumb/Tests/GDOptionsTest.php \
+                   tests/PHPThumb/Tests/GDTest.php \
+                   tests/PHPThumb/Tests/GDTextTest.php
 ```
 
 Run only the Imagick tests:
 
 ```bash
-vendor/bin/phpunit tests/PHPThumb/Tests/ImagickTest.php \
+vendor/bin/phpunit tests/PHPThumb/Tests/ImagickAutoOrientTest.php \
+                   tests/PHPThumb/Tests/ImagickBorderTest.php \
+                   tests/PHPThumb/Tests/ImagickFiltersTest.php \
+                   tests/PHPThumb/Tests/ImagickFlipTest.php \
+                   tests/PHPThumb/Tests/ImagickFormatCoverageTest.php \
+                   tests/PHPThumb/Tests/ImagickGammaTest.php \
                    tests/PHPThumb/Tests/ImagickLoadTest.php \
                    tests/PHPThumb/Tests/ImagickOperationsTest.php \
+                   tests/PHPThumb/Tests/ImagickOptionsTest.php \
                    tests/PHPThumb/Tests/ImagickOutputTest.php \
-                   tests/PHPThumb/Tests/ImagickAdvancedTest.php \
-                   tests/PHPThumb/Tests/ImagickPluginTest.php
+                   tests/PHPThumb/Tests/ImagickPluginTest.php \
+                   tests/PHPThumb/Tests/ImagickRemoteImageTest.php \
+                   tests/PHPThumb/Tests/ImagickTest.php \
+                   tests/PHPThumb/Tests/ImagickTextTest.php
 ```
 
 Imagick tests skip automatically if `ext-imagick` is not loaded.
