@@ -25,7 +25,7 @@ class GDTest extends TestCase
 	{
 		self::assertSame('AVIF',	$this->avif->getFormat());
 		self::assertSame('GIF',		$this->gif->getFormat());
-		self::assertSame('JPG',		$this->jpg->getFormat());
+		self::assertSame('JPEG',		$this->jpg->getFormat());
 		self::assertSame('PNG',		$this->png->getFormat());
 		self::assertSame('WEBP',	$this->webp->getFormat());
 	}

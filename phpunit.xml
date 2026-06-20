@@ -23,7 +23,16 @@
         <!-- GD-only suite -->
         <testsuite name="GD">
             <file>./tests/PHPThumb/Tests/GDTest.php</file>
-            <file>./tests/PHPThumb/Tests/LoadTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDLoadTest.php</file>
+
+            <!-- Advanced (split) -->
+            <file>./tests/PHPThumb/Tests/GDOptionsTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDFlipTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDGammaTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDAutoOrientTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDBorderTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDTextTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDFiltersTest.php</file>
         </testsuite>
 
         <!-- Imagick-only suite -->
@@ -32,10 +41,18 @@
             <file>./tests/PHPThumb/Tests/ImagickLoadTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickOperationsTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickOutputTest.php</file>
-            <file>./tests/PHPThumb/Tests/ImagickAdvancedTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickPluginTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickRemoteImageTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickFormatCoverageTest.php</file>
+
+            <!-- Advanced (split) -->
+            <file>./tests/PHPThumb/Tests/ImagickOptionsTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickFlipTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickGammaTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickAutoOrientTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickBorderTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickTextTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickFiltersTest.php</file>
         </testsuite>
     </testsuites>
 

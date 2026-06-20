@@ -163,6 +163,570 @@ class GD extends PHPThumb
 	}
 
 	/**
+	 * Adds a solid-color border (frame) of $thickness pixels around the image.
+	 *
+	 * The resulting image grows by 2 × $thickness pixels in both axes
+	 * (width and height each gain $thickness on every side). The original
+	 * pixel data is preserved untouched in the center; only the surrounding
+	 * frame is filled with $color.
+	 *
+	 * Alpha is preserved for PNG sources — the new border area is fully
+	 * opaque unless $color carries an alpha component (only supported when
+	 * passing a [r, g, b, a] array; hex strings are always opaque).
+	 *
+	 * @param int $thickness Frame thickness in pixels (positive integer).
+	 * @param array|string $color Either a hex string ('#FF8800' / '#f80' / 'FF8800')
+	 *                            or an [r, g, b] (or [r, g, b, a] 0-255) array.
+	 * @return $this
+	 *
+	 * @throws InvalidArgumentException For negative thickness or invalid color.
+	 */
+	public function border(int $thickness, array|string $color = [0, 0, 0]): GD
+	{
+		if ($thickness < 0)
+		{
+			throw new InvalidArgumentException(
+				'border() $thickness must be non-negative, got: ' . $thickness
+				);
+		}
+
+		if ($thickness === 0)
+		{
+			return $this; // no-op
+		}
+
+		$rgb = $this->parseColor($color);
+
+		$current_width  = $this->current_dimensions['width'];
+		$current_height = $this->current_dimensions['height'];
+
+		$new_width  = $current_width  + 2 * $thickness;
+		$new_height = $current_height + 2 * $thickness;
+
+		// Build the new canvas, filled with the border color.
+		$this->working_image = imagecreatetruecolor($new_width, $new_height);
+
+		if ($this->working_image === false)
+		{
+			throw new RuntimeException('GD: failed to create canvas for border()');
+		}
+
+		$border_color = imagecolorallocate(
+			$this->working_image,
+			$rgb['r'],
+			$rgb['g'],
+			$rgb['b']
+			);
+
+		if ($border_color === false)
+		{
+			throw new RuntimeException('GD: failed to allocate border color');
+		}
+
+		imagefilledrectangle(
+			$this->working_image,
+			0, 0,
+			$new_width, $new_height,
+			$border_color
+		);
+
+		// Preserve alpha when the source is PNG so the original's transparent
+		// pixels stay transparent in the center.
+		if ($this->format === 'PNG' && $this->options['preserveAlpha'] === true)
+		{
+			imagealphablending($this->working_image, false);
+			imagesavealpha($this->working_image, true);
+		}
+
+		// Paste the original image into the center.
+		imagecopy(
+			$this->working_image,
+			$this->old_image,
+			$thickness,
+			$thickness,
+			0,
+			0,
+			$current_width,
+			$current_height
+		);
+
+		// Commit.
+		$this->old_image                 = $this->working_image;
+		$this->current_dimensions['width']  = $new_width;
+		$this->current_dimensions['height'] = $new_height;
+
+		return $this;
+	}
+
+	/**
+	 * Parses a color argument into an [r, g, b] array suitable for
+	 * imagecolorallocate(). Accepts either a hex string or a 3- or 4-element
+	 * [r, g, b[, a]] array. Alpha (if provided) is clamped to [0, 127] for GD.
+	 *
+	 * @param array|string $color
+	 * @return array{r: int, g: int, b: int, a: int}
+	 */
+	protected function parseColor(array|string $color): array
+	{
+		if (is_array($color))
+		{
+			$count = count($color);
+			if ($count !== 3 && $count !== 4)
+			{
+				throw new InvalidArgumentException(
+					'border() color array must have 3 (RGB) or 4 (RGBA) elements, got: ' . $count
+					);
+			}
+			return [
+				'r' => max(0, min(255, (int) $color[0])),
+				'g' => max(0, min(255, (int) $color[1])),
+				'b' => max(0, min(255, (int) $color[2])),
+				'a' => isset($color[3]) ? max(0, min(127, (int) $color[3])) : 0,
+			];
+		}
+
+		if (!is_string($color))
+		{
+			throw new InvalidArgumentException(
+				'border() color must be a hex string or an [r, g, b] array.'
+				);
+		}
+
+		$hex = ltrim(trim($color), '#');
+		// Optional '0x' prefix
+		if (str_starts_with($hex, '0x') || str_starts_with($hex, '0X'))
+		{
+			$hex = substr($hex, 2);
+		}
+
+		// Expand shorthand #abc → #aabbcc
+		if (strlen($hex) === 3)
+		{
+			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+		}
+
+		if (strlen($hex) !== 6 && strlen($hex) !== 8)
+		{
+			throw new InvalidArgumentException(
+				'border() hex color must be 3, 6, or 8 hex digits (with optional #), got: ' . $color
+				);
+		}
+
+		if (!ctype_xdigit($hex))
+		{
+			throw new InvalidArgumentException(
+				'border() hex color contains non-hex characters: ' . $color
+				);
+		}
+
+		return [
+			'r' => hexdec(substr($hex, 0, 2)),
+			'g' => hexdec(substr($hex, 2, 2)),
+			'b' => hexdec(substr($hex, 4, 2)),
+			'a' => strlen($hex) === 8 ? (int) round(hexdec(substr($hex, 6, 2)) * 127 / 255) : 0,
+		];
+	}
+
+	/**
+	 * Renders $text onto the image.
+	 *
+	 * Position keywords (case-insensitive, multiple aliases):
+	 *
+	 *  - top-left / northwest
+	 *  - top / north / top-center
+	 *  - top-right / northeast
+	 *  - left / west / center-left
+	 *  - center
+	 *  - right / east / center-right
+	 *  - bottom-left / southwest
+	 *  - bottom / south / bottom-center
+	 *  - bottom-right / southeast
+	 *
+	 * Options (all optional):
+	 *
+	 *  - size      (int)   Font size in points (default: $this->options['textDefaultSize'])
+	 *  - color     (string|array)  Hex string or [r, g, b] (default: '#FFFFFF')
+	 *  - font      (string|null)   Path to TTF; null → built-in GD font fallback
+	 *  - angle     (float) Rotation in degrees (default: 0)
+	 *  - offsetX   (int)   Horizontal padding from anchor (default: 10)
+	 *  - offsetY   (int)   Vertical padding from anchor (default: 10)
+	 *  - align     (string) 'left' | 'center' | 'right' (default: 'center')
+	 *  - alpha     (int)   Text opacity 0..100 (default: 100)
+	 *  - shadow    (array)  ['enabled' => bool, 'color', 'offsetX', 'offsetY', 'blur']
+	 *  - stroke    (array)  ['enabled' => bool, 'color', 'width']  (requires TTF)
+	 *  - background(array)  ['enabled' => bool, 'color', 'padding', 'alpha']
+	 *
+	 * @param string $text     The text to render. Multi-line via "\n" supported.
+	 * @param string $position Anchor keyword (see above).
+	 * @param array  $options  See above.
+	 * @return $this
+	 *
+	 * @throws InvalidArgumentException For unknown position strings, bad color
+	 *                                  values, or missing imagettftext() support.
+	 */
+	public function text(
+		string $text,
+		string $position = 'bottom-right',
+		array $options = []
+		): GD
+		{
+			if ($text === '')
+			{
+				return $this; // no-op
+			}
+
+			$cfg = $this->resolveTextOptions($options);
+			$anchor = $this->resolveTextAnchor($position);
+
+			$current_width  = $this->current_dimensions['width'];
+			$current_height = $this->current_dimensions['height'];
+
+			$use_ttf = $cfg['font'] !== null && function_exists('imagettftext');
+
+			if ($use_ttf)
+			{
+				$lines = explode("\n", $text);
+				$line_height = (int) round($cfg['size'] * 1.2);
+
+				$max_line_width = 0;
+				foreach ($lines as $line)
+				{
+					$box = imagettfbbox($cfg['size'], $cfg['angle'], $cfg['font'], $line);
+					if ($box === false)
+					{
+						throw new RuntimeException(
+							'GD imagettfbbox() failed for font: ' . $cfg['font']
+							);
+					}
+					$line_w = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
+					if ($line_w > $max_line_width)
+					{
+						$max_line_width = $line_w;
+					}
+				}
+
+				$text_width  = $max_line_width;
+				$text_height = $line_height * count($lines);
+
+				[$x, $y] = $this->computeTextTopLeft(
+					$anchor, $cfg['offsetX'], $cfg['offsetY'],
+					$current_width, $current_height,
+					$text_width, $text_height
+					);
+
+				if ($cfg['background']['enabled'])
+				{
+					$this->drawTextBackgroundGd(
+						$x, $y, $text_width, $text_height,
+						$cfg['background']
+						);
+				}
+
+				if ($cfg['shadow']['enabled'])
+				{
+					$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
+					$shadow_color = imagecolorallocatealpha(
+						$this->old_image,
+						$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b'],
+						$this->alphaToGd127(100)
+						);
+					if ($shadow_color !== false)
+					{
+						imagettftext(
+							$this->old_image,
+							$cfg['size'], $cfg['angle'],
+							$x + $cfg['shadow']['offsetX'],
+							$y + $cfg['shadow']['offsetY'] + $line_height,
+							$shadow_color,
+							$cfg['font'],
+							implode("\n", $lines)
+							);
+					}
+				}
+
+				if ($cfg['stroke']['enabled'])
+				{
+					$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
+					$stroke_color = imagecolorallocatealpha(
+						$this->old_image,
+						$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b'],
+						$this->alphaToGd127(100)
+						);
+					if ($stroke_color !== false)
+					{
+						$stroke_w = max(1, (int) $cfg['stroke']['width']);
+						for ($sx = -$stroke_w; $sx <= $stroke_w; $sx++)
+						{
+							for ($sy = -$stroke_w; $sy <= $stroke_w; $sy++)
+							{
+								if ($sx === 0 && $sy === 0)
+								{
+									continue;
+								}
+								imagettftext(
+									$this->old_image,
+									$cfg['size'], $cfg['angle'],
+									$x + $sx,
+									$y + $sy + $line_height,
+									$stroke_color,
+									$cfg['font'],
+									implode("\n", $lines)
+									);
+							}
+						}
+					}
+				}
+
+				$rgb = $this->parseColor($cfg['color']);
+				$text_color = imagecolorallocatealpha(
+					$this->old_image,
+					$rgb['r'], $rgb['g'], $rgb['b'],
+					$this->alphaToGd127($cfg['alpha'])
+					);
+				if ($text_color === false)
+				{
+					throw new RuntimeException('GD: failed to allocate text color');
+				}
+
+				imagettftext(
+					$this->old_image,
+					$cfg['size'], $cfg['angle'],
+					$x,
+					$y + $line_height,
+					$text_color,
+					$cfg['font'],
+					implode("\n", $lines)
+					);
+			}
+			else
+			{
+				// Built-in GD font fallback
+				$font = 5;
+				$char_w = imagefontwidth($font);
+				$char_h = imagefontheight($font);
+
+				$lines = explode("\n", $text);
+				$max_line_width = 0;
+				foreach ($lines as $line)
+				{
+					$lw = strlen($line) * $char_w;
+					if ($lw > $max_line_width)
+					{
+						$max_line_width = $lw;
+					}
+				}
+
+				$text_width  = $max_line_width;
+				$text_height = $char_h * count($lines);
+
+				[$x, $y] = $this->computeTextTopLeft(
+					$anchor, $cfg['offsetX'], $cfg['offsetY'],
+					$current_width, $current_height,
+					$text_width, $text_height
+					);
+
+				if ($cfg['background']['enabled'])
+				{
+					$this->drawTextBackgroundGd(
+						$x, $y, $text_width, $text_height,
+						$cfg['background']
+						);
+				}
+
+				$rgb = $this->parseColor($cfg['color']);
+				$text_color = imagecolorallocatealpha(
+					$this->old_image,
+					$rgb['r'], $rgb['g'], $rgb['b'],
+					$this->alphaToGd127($cfg['alpha'])
+					);
+				if ($text_color === false)
+				{
+					throw new RuntimeException('GD: failed to allocate text color');
+				}
+
+				$yy = $y;
+				foreach ($lines as $line)
+				{
+					imagestring($this->old_image, $font, $x, $yy, $line, $text_color);
+					$yy += $char_h;
+				}
+			}
+
+			$this->working_image = $this->old_image;
+
+			return $this;
+	}
+
+	/**
+	 * Resolves the text() $options array against the configured defaults,
+	 * normalizing nested shadow/stroke/background arrays.
+	 *
+	 * @param array $options
+	 * @return array Normalized options.
+	 */
+	protected function resolveTextOptions(array $options): array
+	{
+		$size = $options['size']
+		?? $this->options['textDefaultSize']
+		?? 12;
+
+		$color = $options['color'] ?? '#FFFFFF';
+		$font  = $options['font']
+		?? $this->options['textFont']
+		?? null;
+
+		$angle    = (float) ($options['angle']    ?? 0);
+		$offset_x = (int)   ($options['offsetX']  ?? 10);
+		$offset_y = (int)   ($options['offsetY']  ?? 10);
+		$align    = (string)($options['align']    ?? 'center');
+		$alpha    = max(0, min(100, (int) ($options['alpha'] ?? 100)));
+
+		$shadow = array_merge(
+			['enabled' => false, 'color' => '#000000', 'offsetX' => 1, 'offsetY' => 1, 'blur' => 0],
+			$options['shadow'] ?? []
+			);
+		$stroke = array_merge(
+			['enabled' => false, 'color' => '#000000', 'width' => 1],
+			$options['stroke'] ?? []
+			);
+		$background = array_merge(
+			['enabled' => false, 'color' => '#000000', 'padding' => 4, 'alpha' => 75],
+			$options['background'] ?? []
+			);
+
+		// NOTE: keep the array keys in camelCase — they are part of the public
+		// text() options API. Local variables use snake_case for consistency
+		// with the rest of the codebase.
+		return [
+			'size'       => $size,
+			'color'      => $color,
+			'font'       => $font,
+			'angle'      => $angle,
+			'offsetX'    => $offset_x,
+			'offsetY'    => $offset_y,
+			'align'      => $align,
+			'alpha'      => $alpha,
+			'shadow'     => $shadow,
+			'stroke'     => $stroke,
+			'background' => $background,
+		];
+	}
+
+	/**
+	 * Parses a position keyword into [horizontal, vertical] anchors.
+	 *
+	 * @return array{0: string, 1: string}  Two-element array: [h, v]
+	 *                                       where h ∈ {left, center, right} and
+	 *                                       v ∈ {top, center, bottom}.
+	 */
+	protected function resolveTextAnchor(string $position): array
+	{
+		$p = strtolower(trim($position));
+
+		// Horizontal
+		$h = 'center';
+		if (str_contains($p, 'left') || str_contains($p, 'west'))
+		{
+			$h = 'left';
+		}
+		elseif (str_contains($p, 'right') || str_contains($p, 'east'))
+		{
+			$h = 'right';
+		}
+
+		// Vertical
+		$v = 'center';
+		if (str_contains($p, 'top') || str_contains($p, 'north') || str_contains($p, 'upper'))
+		{
+			$v = 'top';
+		}
+		elseif (str_contains($p, 'bottom') || str_contains($p, 'south') || str_contains($p, 'lower'))
+		{
+			$v = 'bottom';
+		}
+
+		if ($h === 'center' && $v === 'center' && $p !== 'center')
+		{
+			// Couldn't match any keyword
+			throw new InvalidArgumentException(
+				"Unknown text() position: '$position'. " .
+				"Expected 'top-left', 'top', 'top-right', 'left', 'center', 'right', " .
+				"'bottom-left', 'bottom', or 'bottom-right' (aliases: " .
+				"'northwest'/'northeast'/'southwest'/'southeast', " .
+				"'north'/'south', 'west'/'east')."
+				);
+		}
+
+		return [$h, $v];
+	}
+
+	/**
+	 * Given the canvas size, text bounding box, and anchor, returns the top-left
+	 * (x, y) at which the text should be drawn so that its bounding box lands on
+	 * the requested anchor.
+	 *
+	 * @param array{0: string, 1: string} $anchor
+	 */
+	protected function computeTextTopLeft(
+		array $anchor,
+		int $offset_x, int $offset_y,
+		int $canvas_w, int $canvas_h,
+		int $text_w, int $text_h
+		): array
+		{
+			[$h_anchor, $v_anchor] = $anchor;
+
+			$x = match ($h_anchor) {
+				'left'   => $offset_x,
+				'right'  => $canvas_w - $text_w - $offset_x,
+				default  => (int) (($canvas_w - $text_w) / 2),
+			};
+
+			$y = match ($v_anchor) {
+				'top'    => $offset_y,
+				'bottom' => $canvas_h - $text_h - $offset_y,
+				default  => (int) (($canvas_h - $text_h) / 2),
+			};
+
+			return [$x, $y];
+	}
+
+	/**
+	 * Maps 0..100 percentage alpha to GD's 0..127 (where 0 = opaque, 127 = transparent).
+	 */
+	protected function alphaToGd127(int $percent): int
+	{
+		$percent = max(0, min(100, $percent));
+		return (int) round((100 - $percent) * 127 / 100);
+	}
+
+	/**
+	 * Paints a filled rectangle behind a text bounding box.
+	 */
+	protected function drawTextBackgroundGd(
+		int $x, int $y, int $w, int $h, array $bg
+		): void
+		{
+			$padding = (int) ($bg['padding'] ?? 4);
+			$rgb = $this->parseColor($bg['color']);
+			$bg_color = imagecolorallocatealpha(
+				$this->old_image,
+				$rgb['r'], $rgb['g'], $rgb['b'],
+				$this->alphaToGd127((int) ($bg['alpha'] ?? 75))
+			);
+			if ($bg_color === false)
+			{
+				return;
+			}
+			imagefilledrectangle(
+				$this->old_image,
+				$x - $padding, $y - $padding,
+				$x + $w + $padding, $y + $h + $padding,
+				$bg_color
+			);
+	}
+
+	/**
 	 * Check if the image can be scaled up
 	 */
 	private function checkingMaxSize(int $max_width, int $max_height): void
@@ -602,7 +1166,7 @@ class GD extends PHPThumb
 	 */
 	public function rotateImage(string $direction = 'CW'): GD
 	{
-		$degrees = match($direction) {
+		$degrees = match ($direction) {
 			'CW'		=> 90,
 			default		=> -90,
 		};
@@ -627,6 +1191,253 @@ class GD extends PHPThumb
 		$this->old_image					= $this->working_image;
 		$this->current_dimensions['width']	= imagesx($this->working_image);
 		$this->current_dimensions['height']	= imagesy($this->working_image);
+
+		return $this;
+	}
+
+	/**
+	 * Flips / mirrors the image.
+	 *
+	 * Accepts the following direction keywords (case-insensitive):
+	 *
+	 *  - 'horizontal' (alias: 'h', 'lr') — mirror left ↔ right (default)
+	 *  - 'vertical'   (alias: 'v', 'tb') — mirror top ↔ bottom
+	 *  - 'both'       (alias: 'hv')      — mirror both axes (equivalent to 180° rotation)
+	 *
+	 * @param string $direction The flip direction (see above).
+	 * @return $this
+	 *
+	 * @throws RuntimeException If the GD build does not have imageflip() available.
+	 * @throws InvalidArgumentException For an unknown direction string.
+	 */
+	public function flip(string $direction = 'horizontal'): GD
+	{
+		if (!function_exists('imageflip'))
+		{
+			throw new RuntimeException(
+				'Your version of GD does not support imageflip(). ' .
+				'Upgrade to PHP 8.0+ with bundled GD 2.1.1+, or use PHPThumb\Imagick.'
+				);
+		}
+
+		$normalized = strtolower(trim($direction));
+
+		$mode = match ($normalized) {
+			'horizontal', 'h', 'lr' => IMG_FLIP_HORIZONTAL,
+			'vertical',   'v', 'tb' => IMG_FLIP_VERTICAL,
+			'both',       'hv'      => IMG_FLIP_BOTH,
+			default => throw new InvalidArgumentException(
+				"Unknown flip direction: '{$direction}'. " .
+				"Expected 'horizontal', 'vertical', or 'both'."
+					),
+		};
+
+		if (imageflip($this->old_image, $mode) === false)
+		{
+			throw new RuntimeException('GD imageflip() failed.');
+		}
+
+		// imageflip() does not change dimensions, but keep working_image in sync.
+		$this->working_image = $this->old_image;
+
+		return $this;
+	}
+
+	/**
+	 * Auto-orients the image based on its EXIF orientation tag.
+	 *
+	 * Many cameras (especially phones) store images in their sensor's
+	 * natural orientation and rely on an EXIF tag indicating the rotation
+	 * needed for display. Without this step, phone photos appear sideways
+	 * on the web.
+	 *
+	 * Orientation values 1–8 are handled:
+	 *
+	 *  - 1 → no change (normal)
+	 *  - 2 → mirror horizontal
+	 *  - 3 → rotate 180°
+	 *  - 4 → mirror vertical
+	 *  - 5 → mirror horizontal + rotate 270° CW
+	 *  - 6 → rotate 90° CW
+	 *  - 7 → mirror horizontal + rotate 90° CW
+	 *  - 8 → rotate 270° CW
+	 *
+	 * The method is a **graceful no-op** when:
+	 *  - `ext-exif` is not loaded
+	 *  - the source has no EXIF block
+	 *  - the orientation tag is absent or `1` (normal)
+	 *  - the source is not JPEG (only JPEG reliably carries EXIF in GD-land;
+	 *    HEIC/TIFF go through Imagick, which has its own native handling)
+	 *
+	 * The image's current dimensions are refreshed after any rotation.
+	 *
+	 * @return $this
+	 */
+	public function autoOrient(): GD
+	{
+		// Graceful no-op when EXIF extension isn't available.
+		if (!function_exists('exif_read_data'))
+		{
+			return $this;
+		}
+
+		// Only JPEG reliably carries EXIF in GD's toolchain. For other formats,
+		// silently skip — Imagick handles them natively via its own autoOrient().
+		if ($this->format !== 'JPEG')
+		{
+			return $this;
+		}
+
+		$exif = @exif_read_data($this->file_name, 'IFD0', false, false);
+
+		if (!is_array($exif) || !isset($exif['Orientation']))
+		{
+			return $this;
+		}
+
+		$orientation = (int) $exif['Orientation'];
+
+		if ($orientation === 1 || $orientation < 1 || $orientation > 8)
+		{
+			return $this;
+		}
+
+		switch ($orientation)
+		{
+			case 2: // mirror horizontal
+				imageflip($this->old_image, IMG_FLIP_HORIZONTAL);
+				break;
+
+			case 3: // rotate 180
+				$this->rotateImageNDegrees(180);
+				break;
+
+			case 4: // mirror vertical
+				imageflip($this->old_image, IMG_FLIP_VERTICAL);
+				break;
+
+			case 5: // mirror horizontal + rotate 270 CW
+				imageflip($this->old_image, IMG_FLIP_HORIZONTAL);
+				$this->rotateImageNDegrees(270);
+				break;
+
+			case 6: // rotate 90 CW
+				$this->rotateImageNDegrees(90);
+				break;
+
+			case 7: // mirror horizontal + rotate 90 CW
+				imageflip($this->old_image, IMG_FLIP_HORIZONTAL);
+				$this->rotateImageNDegrees(90);
+				break;
+
+			case 8: // rotate 270 CW (== 90 CCW)
+				$this->rotateImageNDegrees(270);
+				break;
+		}
+
+		return $this;
+	}
+
+	/**
+	 * Applies output-gamma correction to the image.
+	 *
+	 * Wraps GD's imagegammacorrect(). The input gamma is assumed to be 1.0
+	 * (sRGB). Values below 1.0 darken the image, values above 1.0 brighten.
+	 * Realistic sRGB adjustment is in the 0.5–2.0 range.
+	 *
+	 * The image dimensions are unchanged. Alpha is preserved.
+	 *
+	 * @param float $correction The output gamma (1.0 = no change).
+	 * @return $this
+	 *
+	 * @throws RuntimeException If the GD build does not have imagegammacorrect() available.
+	 */
+	public function gamma(float $correction): GD
+	{
+		if (!function_exists('imagegammacorrect'))
+		{
+			throw new RuntimeException(
+				'Your version of GD does not support imagegammacorrect().'
+				);
+		}
+
+		if (imagegammacorrect($this->old_image, 1.0, $correction) === false)
+		{
+			throw new RuntimeException('GD imagegammacorrect() failed.');
+		}
+
+		$this->working_image = $this->old_image;
+
+		return $this;
+	}
+
+	/**
+	 * Sharpens the image using an unsharp-mask style 3×3 convolution.
+	 *
+	 * The kernel is the classic "high-pass" sharpen matrix with the strength
+	 * modulated by $amount. Higher values produce a stronger sharpening effect.
+	 *
+	 *  - $amount = 0   → no-op
+	 *  - $amount = 50  → moderate sharpening (default)
+	 *  - $amount = 100 → strongest sharpening
+	 *
+	 * Dimensions are unchanged. Alpha is preserved.
+	 *
+	 * @param int $amount Sharpening strength, 0–100.
+	 * @return $this
+	 *
+	 * @throws RuntimeException If the GD build does not have imageconvolution() available.
+	 * @throws InvalidArgumentException For out-of-range amounts.
+	 */
+	public function sharpen(int $amount = 50): GD
+	{
+		if ($amount < 0 || $amount > 100)
+		{
+			throw new InvalidArgumentException(
+				'sharpen() $amount must be between 0 and 100, got: ' . $amount
+				);
+		}
+
+		if ($amount === 0)
+		{
+			return $this; // no-op
+		}
+
+		if (!function_exists('imageconvolution'))
+		{
+			throw new RuntimeException(
+				'Your version of GD does not support imageconvolution().'
+				);
+		}
+
+		// Map $amount (0..100) → bias (0..1): 0 = neutral, 1 = max contrast.
+		// The 3x3 high-pass kernel produces an unsharp-mask-like effect when
+		// the central weight is biased toward "amount".
+		//
+		// For a 3x3 kernel of all -1 with center c, the sum of all weights
+		// is c - 8. imageconvolution() divides by the divisor argument, so
+		// divisor must equal that sum — otherwise flat regions are scaled
+		// by (c-8)/c. The `max(9, …)` clamp keeps the center weight above 8
+		// so the divisor is never zero (which would happen for very small
+		// amounts once rounded).
+		$bias = $amount / 100.0;
+
+		$center = max(9, (int) round(8 + (8 * $bias)));
+		$divisor = $center - 8;
+		$offset = 0;
+
+		$matrix = [
+			[-1, -1, -1],
+			[-1, $center, -1],
+			[-1, -1, -1],
+		];
+
+		if (imageconvolution($this->old_image, $matrix, $divisor, $offset) === false)
+		{
+			throw new RuntimeException('GD imageconvolution() failed.');
+		}
+
+		$this->working_image = $this->old_image;
 
 		return $this;
 	}
@@ -673,6 +1484,136 @@ class GD extends PHPThumb
 	}
 
 	/**
+	 * Internal helper that applies imagefilter() with arbitrary numeric arguments
+	 * and consistent error handling. Used by the chainable filter wrappers below.
+	 *
+	 * @throws RuntimeException If imagefilter() is unavailable or fails.
+	 */
+	protected function applyGdFilter(int $filter, int|float ...$args): GD
+	{
+		if (!function_exists('imagefilter'))
+		{
+			throw new RuntimeException('Your version of GD does not support image filters');
+		}
+
+		$result = imagefilter($this->old_image, $filter, ...$args);
+
+		if (!$result)
+		{
+			throw new RuntimeException('GD imagefilter() failed for filter: ' . $filter);
+		}
+
+		$this->working_image = $this->old_image;
+
+		return $this;
+	}
+
+	/**
+	 * Desaturates the image (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_GRAYSCALE. The image dimensions are unchanged.
+	 */
+	public function grayscale(): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_GRAYSCALE);
+	}
+
+	/**
+	 * Adjusts brightness (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_BRIGHTNESS. The image dimensions are unchanged.
+	 *
+	 * @param int $level Range -255 (full black) .. 255 (full white). 0 = no change.
+	 */
+	public function brightness(int $level): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_BRIGHTNESS, $level);
+	}
+
+	/**
+	 * Adjusts contrast (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_CONTRAST. The image dimensions are unchanged.
+	 *
+	 * @param int $level Range -100 (flat) .. 100 (max contrast). 0 = no change.
+	 */
+	public function contrast(int $level): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_CONTRAST, $level);
+	}
+
+	/**
+	 * Applies a Gaussian blur (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_GAUSSIAN_BLUR. The image dimensions are unchanged.
+	 *
+	 * @param int|float $amount Blur amount. Typical range 0..10; passed
+	 *                          directly through to imagefilter().
+	 */
+	public function blur(int|float $amount = 1): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_GAUSSIAN_BLUR, $amount);
+	}
+
+	/**
+	 * Applies a pixelation effect (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_PIXELATE. The image dimensions are unchanged.
+	 *
+	 * @param int $block_size Pixel block size in pixels. Must be >= 1.
+	 *                        $block_size = 1 is a no-op.
+	 */
+	public function pixelate(int $block_size = 10): GD
+	{
+		if ($block_size < 1)
+		{
+			throw new InvalidArgumentException(
+				'pixelate() $block_size must be >= 1, got: ' . $block_size
+				);
+		}
+
+		if ($block_size === 1)
+		{
+			return $this; // no-op
+		}
+
+		// GD's pixelate takes (block_size, use_advanced_effect).
+		return $this->applyGdFilter(IMG_FILTER_PIXELATE, $block_size, true);
+	}
+
+	/**
+	 * Applies an edge-detection filter (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_EDGEDETECT. The image dimensions are unchanged.
+	 */
+	public function edgeDetect(): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_EDGEDETECT);
+	}
+
+	/**
+	 * Applies an emboss filter (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_EMBOSS. The image dimensions are unchanged.
+	 */
+	public function emboss(): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_EMBOSS);
+	}
+
+	/**
+	 * Applies a smoothing pass (chainable convenience wrapper).
+	 *
+	 * Wraps IMG_FILTER_SMOOTH. The image dimensions are unchanged.
+	 *
+	 * @param int $level Range -10 (heavy blur) .. 10 (sharpening pass).
+	 */
+	public function smooth(int $level = 1): GD
+	{
+		return $this->applyGdFilter(IMG_FILTER_SMOOTH, $level);
+	}
+
+	/**
 	 * Shows an image
 	 *
 	 * This function will show the current image by first sending the appropriate header
@@ -708,7 +1649,8 @@ class GD extends PHPThumb
 			imageinterlace($this->old_image, 0);
 		}
 
-		switch ($this->format) {
+		switch ($this->format)
+		{
 			case 'AVIF':
 				if ($raw_data === false)
 				{
@@ -780,10 +1722,10 @@ class GD extends PHPThumb
 	 */
 	public function save(string $file_name, ?string $format = null): GD
 	{
-		$validFormats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
+		$valid_formats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
 		$format			= ($format !== null) ? strtoupper($format) : $this->format;
 
-		if (!in_array($format, $validFormats))
+		if (!in_array($format, $valid_formats))
 		{
 			throw new InvalidArgumentException('Invalid format type specified in save function: ' . $format);
 		}
@@ -851,7 +1793,10 @@ class GD extends PHPThumb
 				'alphaMaskColor'		=> [255, 255, 255],
 				'preserveTransparency'	=> true,
 				'transparencyMaskColor'	=> [0, 0, 0],
-				'interlace'				=> null
+				'interlace'				=> null,
+				'sharpenAmount'         => 50,
+				'textFont'              => null,
+				'textDefaultSize'       => 12,
 			];
 		}
 		else
@@ -1265,6 +2210,6 @@ class GD extends PHPThumb
 
 			imagepalettecopy($palette_image, $this->working_image);
 			imagepalettecopy($this->working_image, $palette_image);
-        }
+		}
 	}
 }

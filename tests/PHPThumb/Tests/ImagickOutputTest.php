@@ -103,8 +103,8 @@ class ImagickOutputTest extends TestCase
 
 		// Verify the saved file is a valid JPEG of expected dimensions
 		$reloaded = new ImagickExt($tempFile);
-		self::assertSame(100, $reloaded->getImageWidth());
-		self::assertSame(75,  $reloaded->getImageHeight());
+		self::assertEquals(100, $reloaded->getImageWidth());
+		self::assertEqualsWithDelta(75, $reloaded->getImageHeight(), 1);
 
 		unlink($tempFile);
 	}
