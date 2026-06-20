@@ -8,6 +8,7 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 
 ## Table of Contents
 
+- [What's New in 2.5](#whats-new-in-25)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -19,6 +20,13 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
   - [Crop Operations](#crop-operations)
   - [Rotate & Filter](#rotate--filter)
   - [Pad](#pad)
+  - [Orientation](#orientation)
+  - [Flip](#flip)
+  - [Sharpen](#sharpen)
+  - [Gamma Correction](#gamma-correction)
+  - [Border](#border)
+  - [Text Overlay](#text-overlay)
+  - [Advanced Filters](#advanced-filters)
   - [Output](#output)
 - [Plugins](#plugins)
 - [Configuration Options](#configuration-options)
@@ -30,6 +38,29 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 
 ---
 
+## What's New in 2.5
+
+PHPThumb 2.5 is a **feature expansion** release — every manipulation method still returns `$this` for chaining, and the API stays unified across the GD and Imagick backends. New capabilities:
+
+| Feature | One-liner |
+|---------|-----------|
+| `autoOrient()` | Auto-rotate phone photos based on EXIF orientation |
+| `flip()` | Mirror horizontally, vertically, or both |
+| `gamma()` | Lighten/darken with output gamma |
+| `sharpen()` | Unsharp-mask style sharpening |
+| `border()` | Add a solid-color frame of any thickness |
+| `text()` | Render text with font, color, size, shadow, stroke, background, and 9-grid positioning |
+| **Advanced filter wrappers** | `grayscale()`, `brightness()`, `contrast()`, `blur()`, `pixelate()`, `edgeDetect()`, `emboss()`, `smooth()` — chainable convenience wrappers around `imageFilter()` |
+
+All new methods are available on **both** backends. See the dedicated sections below for full documentation.
+
+**Migration notes for 2.4 → 2.5:**
+
+* The default options array now includes three additional keys: `sharpenAmount`, `textFont`, `textDefaultSize`. Existing code that compares `getOptions()` output byte-for-byte (i.e. test assertions) will need to be updated to include the new keys.
+* No public method signatures were changed. No methods were renamed or removed.
+
+---
+
 ## Features
 
 - **Two interchangeable backends** — Use `PHPThumb\GD` (built on PHP's GD extension) or `PHPThumb\Imagick` (built on the PECL Imagick extension). Same API, switch with one `use` statement.
@@ -37,7 +68,14 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
 - **Flexible resizing** — By width, height, percentage, or adaptive (with crop)
 - **Crop operations** — From-center, quadrant-based, percentage-based, or vanilla x/y cropping
 - **Rotation** — 90° clockwise/counter-clockwise or arbitrary degrees
-- **Image filters** — Grayscale, negate, brightness, blur, emboss, and more
+- **EXIF auto-orientation** — Correct phone-photo rotation based on embedded EXIF tags
+- **Text overlay / captioning** — Render text with font, color, size, alignment, shadow, stroke, and background
+- **Flip / mirror** — Horizontal, vertical, or both axes
+- **Sharpen / unsharp mask** — One-call image sharpening
+- **Gamma correction** — Adjust output gamma to brighten or darken
+- **Border / frame** — Solid-color border around the image
+- **Advanced filter wrappers** — Grayscale, brightness, contrast, blur, pixelate, edge detect, emboss, smooth
+- **Image filters** — Grayscale, negate, brightness, blur, emboss, and more (via `imageFilter()`)
 - **Plugin system** — Extend the library with custom manipulations (Reflection, Trim, Watermark included). Plugins transparently dispatch to the correct backend.
 - **Modern PHP 8.2+** — Strict types, enums where appropriate, modern syntax
 - **Composer-ready** — PSR-4 autoloading and Composer integration out of the box
@@ -93,11 +131,14 @@ use PHPThumb\GD;
 // use PHPThumb\Imagick; // ← uncomment to switch
 
 $thumb = new GD('path/to/image.jpg');
-$thumb->resize(300, 300)
-      ->cropFromCenter(200, 200);
-$thumb->show();              // Output to browser
-// $thumb->save('out.jpg');   // Or save to file
-// $thumb->getImageAsString(); // Or get raw binary as a string
+$thumb->autoOrient()              // correct EXIF rotation
+      ->resize(300, 300)
+      ->cropFromCenter(200, 200)
+      ->sharpen()                 // crisp thumbnails
+      ->border(4, '#000000')      // thin frame
+      ->show();                   // Output to browser
+// $thumb->save('out.jpg');       // Or save to file
+// $thumb->getImageAsString();    // Or get raw binary as a string
 ```
 
 To use Imagick instead, change only the `use` statement and the constructor call:
@@ -106,9 +147,16 @@ To use Imagick instead, change only the `use` statement and the constructor call
 use PHPThumb\Imagick;
 
 $thumb = new Imagick('path/to/image.jpg');
-$thumb->resize(300, 300)
-      ->cropFromCenter(200, 200);
-$thumb->show();
+$thumb->autoOrient()
+      ->resize(300, 300)
+      ->cropFromCenter(200, 200)
+      ->sharpen()
+      ->text('© Acme', 'bottom right', [
+          'size'   => 14,
+          'color'  => '#FFFFFF',
+          'shadow' => ['enabled' => true],
+      ])
+      ->show();
 ```
 
 The fluent API is identical across both backends.
@@ -126,10 +174,11 @@ Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ i
 | Memory usage | Lower | Higher (full pixel buffer) |
 | Resize quality | Good (bicubic in modern GD) | Excellent (Lanczos / Catmull on Imagick 7) |
 | Rotation | Bicubic approximation | Pixel-accurate |
+| Text rendering | `imagettftext()` for TTF, built-in fonts as fallback | `ImagickDraw` with full TTF + built-in font support |
 | Plugin output | Single-pass GD ops | Compositing with full alpha support |
 | Constructor return on plugin dispatch | `PHPThumb\GD` | `PHPThumb\Imagick` |
 
-**Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/TIFF support, higher-quality resampling, or pixel-accurate rotation.
+**Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/TIFF support, higher-quality resampling, pixel-accurate rotation, or richer text rendering.
 
 You can mix backends within the same project — for example, use GD for JPEG thumbnails and Imagick for HEIC processing.
 
@@ -256,6 +305,165 @@ Centers the image on a canvas of the given size, filling the rest with `$color`.
 $thumb->pad(500, 500, [255, 255, 255]); // White background
 $thumb->pad(800, 600, [0, 0, 0]);       // Black background
 ```
+
+### Orientation
+
+#### `autoOrient(): self`
+Reads the EXIF orientation tag (JPEG / TIFF / HEIC inputs) and rotates/mirrors the image so it displays upright. No-op if no EXIF tag is present, if the tag is `1` (normal), or if the `ext-exif` extension isn't loaded.
+
+```php
+$thumb = new GD('phone-photo.jpg');
+$thumb->autoOrient()->resize(800, 0)->show();
+```
+
+### Flip
+
+#### `flip(string $direction = 'horizontal'): self`
+Mirrors the image. `$direction` accepts:
+
+| Value | Aliases | Effect |
+|-------|---------|--------|
+| `'horizontal'` | `'h'`, `'lr'` | Mirror left ↔ right |
+| `'vertical'` | `'v'`, `'tb'` | Mirror top ↔ bottom |
+| `'both'` | `'hv'` | Mirror both axes |
+
+```php
+$thumb->flip();              // horizontal (default)
+$thumb->flip('vertical');    // upside-down
+$thumb->flip('both');        // 180° rotation equivalent
+```
+
+### Sharpen
+
+#### `sharpen(int $amount = 50): self`
+Sharpens the image with an unsharp-mask style kernel. `$amount` ranges from `0` (no sharpening) to `100` (strong sharpening).
+
+```php
+$thumb->sharpen();      // default 50
+$thumb->sharpen(80);    // aggressive sharpening for previews
+```
+
+### Gamma Correction
+
+#### `gamma(float $correction): self`
+Adjusts the output gamma. Values < 1 darken, > 1 brighten. Realistic sRGB adjustment is in the `0.5`–`2.0` range.
+
+```php
+$thumb->gamma(1.5);   // brighten
+$thumb->gamma(0.7);   // darken
+```
+
+### Border
+
+#### `border(int $thickness, array|string $color = [0, 0, 0]): self`
+Adds a solid-color frame of `$thickness` pixels around the image. `$color` may be an `[r, g, b]` array or a hex string (`'#FF8800'`).
+
+`$color` accepts:
+
+- A 3-element `[r, g, b]` array (e.g. `[255, 128, 0]`)
+- A hex string (`'#FF8800'`, `'FF8800'`, `'#f80'`, or `'f80'` — with or without leading `#`, case-insensitive, 3/6/8-digit forms supported)
+
+Alpha is preserved for PNG sources. Throws `\InvalidArgumentException` for negative thickness, malformed hex strings, or wrong-shaped color arrays.
+
+```php
+$thumb->border(10);                  // 10px black frame
+$thumb->border(4, '#FFFFFF');        // 4px white frame
+$thumb->border(2, [200, 200, 200]);  // 2px light-grey frame
+```
+
+### Text Overlay
+
+#### `text(string $text, string $position = 'bottom-right', array $options = []): self`
+Renders `$text` onto the image. The full options array is described below.
+
+**Position keywords** (9-grid + edge aliases):
+
+| String | Anchor |
+|--------|--------|
+| `'top-left'`, `'northwest'` | upper-left corner |
+| `'top'`, `'north'`, `'top-center'` | top-center |
+| `'top-right'`, `'northeast'` | upper-right corner |
+| `'left'`, `'west'`, `'center-left'` | left-center |
+| `'center'` | center |
+| `'right'`, `'east'`, `'center-right'` | right-center |
+| `'bottom-left'`, `'southwest'` | lower-left corner |
+| `'bottom'`, `'south'`, `'bottom-center'` | bottom-center |
+| `'bottom-right'`, `'southeast'` | lower-right corner |
+
+**Options array:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `size` | `int` | `12` | Font size (px for Imagick, pt for GD TTF) |
+| `color` | `string\|array` | `'#FFFFFF'` | Text color (hex or `[r, g, b]`) |
+| `font` | `string\|null` | `null` | Path to TTF file (GD) or built-in font name (Imagick). `null` → built-in fallback on GD. |
+| `angle` | `float` | `0` | Rotation in degrees |
+| `offsetX` | `int` | `10` | Padding from the horizontal anchor |
+| `offsetY` | `int` | `10` | Padding from the vertical anchor |
+| `align` | `string` | `'center'` | Per-line horizontal alignment: `'left'` / `'center'` / `'right'` |
+| `alpha` | `int` | `100` | Text opacity, 0–100 |
+| `shadow` | `array` | `['enabled' => false]` | Drop shadow: keys `enabled`, `color`, `offsetX`, `offsetY`, `blur` |
+| `stroke` | `array` | `['enabled' => false]` | Text outline: keys `enabled`, `color`, `width` |
+| `background` | `array` | `['enabled' => false]` | Text background pill: keys `enabled`, `color`, `padding`, `alpha` |
+
+```php
+// Simple caption
+$thumb->text('© 2025 Acme', 'bottom-right', [
+    'size'  => 14,
+    'color' => '#FFFFFF',
+    'shadow' => ['enabled' => true],
+]);
+
+// Centered title with background pill
+$thumb->text('SALE', 'center', [
+    'size'   => 48,
+    'color'  => '#FF0000',
+    'background' => [
+        'enabled' => true,
+        'color'   => '#FFFFFF',
+        'padding' => 12,
+        'alpha'   => 85,
+    ],
+]);
+
+// TTF font with stroke (Imagick only — built-in fonts can't be stroked reliably)
+$thumb->text('Brand', 'top-left', [
+    'font'   => '/path/to/brand.ttf',
+    'size'   => 36,
+    'color'  => '#222222',
+    'stroke' => ['enabled' => true, 'color' => '#FFFFFF', 'width' => 2],
+]);
+```
+
+> **Backend note:** On GD, stroke rendering requires a TTF font (`imagettftext()` does the stroke internally). On Imagick, both built-in and TTF fonts support stroke via `ImagickDraw::setStrokeColor` + `setStrokeWidth`.
+
+### Advanced Filters
+
+Convenience wrappers around the platform-native `imageFilter()` — all available on **both** backends, all chainable.
+
+| Method | Underlying GD constant | Underlying Imagick method |
+|--------|------------------------|----------------------------|
+| `grayscale(): self` | `IMG_FILTER_GRAYSCALE` | `setImageColorspace(GRAY)` |
+| `brightness(int $level): self` | `IMG_FILTER_BRIGHTNESS` | `modulateImage(100+$level, 100, 100)` |
+| `contrast(int $level): self` | `IMG_FILTER_CONTRAST` | `contrastImage($level)` |
+| `blur(int|float $amount = 1): self` | `IMG_FILTER_GAUSSIAN_BLUR` | `gaussianBlurImage(0, $amount)` |
+| `pixelate(int $blockSize = 10): self` | `IMG_FILTER_PIXELATE` | scale down + scale up |
+| `edgeDetect(): self` | `IMG_FILTER_EDGEDETECT` | `edgeImage(1)` |
+| `emboss(): self` | `IMG_FILTER_EMBOSS` | `embossImage(0, 1)` |
+| `smooth(int $level = 1): self` | `IMG_FILTER_SMOOTH` | `gaussianBlurImage($level, 1)` |
+
+```php
+// Muted preview: desaturate + soften
+$thumb->grayscale()->smooth(3);
+
+// "Incognito mode" blur for previews
+$thumb->pixelate(8);
+
+// Dramatic edge-detected poster
+$thumb->edgeDetect()->contrast(-20);
+```
+
+For backend-specific magic (e.g. Imagick's `sepiaToneImage`, GD's `IMG_FILTER_MEAN_REMOVAL`), use `imageFilter()` directly with the native constant.
 
 ### Output
 
@@ -430,6 +638,9 @@ $thumb = new PHPThumb\GD('image.jpg', [
 | `preserveTransparency` | `bool` | `true` | GD & Imagick | Preserve GIF / WebP transparency |
 | `transparencyMaskColor` | `array` | `[0, 0, 0]` | GD & Imagick | RGB color used for GIF transparency mask |
 | `interlace` | `bool\|null` | `null` | GD & Imagick | Enable/disable interlacing (progressive rendering). `null` = leave default |
+| `sharpenAmount` | `int` | `50` | GD & Imagick | Default sharpening strength used by `sharpen()` when no argument is passed |
+| `textFont` | `string\|null` | `null` | GD & Imagick | Default TTF font path used by `text()` when `options.font` is not provided |
+| `textDefaultSize` | `int` | `12` | GD & Imagick | Default font size used by `text()` when `options.size` is not provided |
 
 ---
 
@@ -454,11 +665,45 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 // Rotate 90° clockwise
 (new PHPThumb\GD('photo.jpg'))->rotateImage('CW')->save('rotated.jpg');
 
+// Auto-orient a phone photo
+(new PHPThumb\GD('phone-photo.jpg'))->autoOrient()->resize(800, 0)->show();
+
+// Mirror horizontally
+(new PHPThumb\GD('photo.jpg'))->flip()->save('mirror.jpg');
+
+// Sharpen after resize
+(new PHPThumb\GD('photo.jpg'))
+    ->resize(400, 0)
+    ->sharpen(75)
+    ->save('crisp.jpg');
+
+// Add a frame
+(new PHPThumb\GD('photo.jpg'))
+    ->resize(400, 0)
+    ->border(6, '#000000')
+    ->save('framed.jpg');
+
+// Brighten + add a watermark-style text caption
+(new PHPThumb\GD('photo.jpg'))
+    ->gamma(1.3)
+    ->text('© Acme', 'bottom-right', [
+        'size'  => 14,
+        'color' => '#FFFFFF',
+        'shadow' => ['enabled' => true],
+    ])
+    ->save('captioned.jpg');
+
 // Grayscale + slight blur (GD)
 (new PHPThumb\GD('photo.jpg'))
     ->imageFilter(IMG_FILTER_GRAYSCALE)
     ->imageFilter(IMG_FILTER_GAUSSIAN_BLUR)
     ->save('muted.jpg');
+
+// Grayscale + blur (chainable wrapper, both backends)
+(new PHPThumb\GD('photo.jpg'))
+    ->grayscale()
+    ->blur(3)
+    ->save('soft.jpg');
 
 // Pad onto a colored canvas
 (new PHPThumb\GD('photo.jpg'))->pad(1200, 800, [0, 0, 0])->show();
@@ -468,9 +713,11 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 
 // Chain everything
 (new PHPThumb\GD('photo.jpg'))
+    ->autoOrient()
     ->resize(0, 800)
     ->cropFromCenter(800, 800)
-    ->imageFilter(IMG_FILTER_CONTRAST, -10)
+    ->sharpen()
+    ->text('Final', 'bottom-right', ['color' => '#FFFFFF', 'shadow' => ['enabled' => true]])
     ->save('final.jpg', 'JPEG');
 ```
 
@@ -491,6 +738,16 @@ $thumb->resize(800, 0)->save('photo.jpg', 'JPEG');
 (new PHPThumb\Imagick('photo.jpg'))
     ->imageFilter(\Imagick::FILTER_GRAYSCALE)
     ->save('grayscale.jpg');
+
+// Imagick: text caption with TTF font and stroke
+(new PHPThumb\Imagick('photo.jpg'))
+    ->text('Hello', 'center', [
+        'font'   => '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        'size'   => 48,
+        'color'  => '#FF8800',
+        'stroke' => ['enabled' => true, 'color' => '#000000', 'width' => 2],
+    ])
+    ->show();
 
 // Imagick: composite a watermark with 50% opacity
 $wm = (new PHPThumb\Imagick('logo.png'))->resizePercent(20);

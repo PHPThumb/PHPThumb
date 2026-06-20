@@ -34,7 +34,11 @@ class LoadTest extends TestCase
 										1 => 0,
 										2 => 0
 			],
-			'interlace'			 => null], $this->thumb->getOptions());
+			'interlace'			 => null,
+			'sharpenAmount'         => 50,
+			'textFont'              => null,
+			'textDefaultSize'       => 12,
+		], $this->thumb->getOptions());
 
 		self::assertSame('JPG', $this->thumb->getFormat());
 		self::assertSame(__DIR__ . '/../../resources/test.jpg', $this->thumb->getFileName());
