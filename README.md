@@ -151,7 +151,7 @@ $thumb->autoOrient()
       ->resize(300, 300)
       ->cropFromCenter(200, 200)
       ->sharpen()
-      ->text('© Acme', 'bottom right', [
+      ->text('© PHPThumb', 'bottom right', [
           'size'   => 14,
           'color'  => '#FFFFFF',
           'shadow' => ['enabled' => true],
@@ -728,7 +728,7 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 // Brighten + add a watermark-style text caption
 (new PHPThumb\GD('photo.jpg'))
     ->gamma(1.3)
-    ->text('© Acme', 'bottom-right', [
+    ->text('© PHPThumb', 'bottom-right', [
         'size'  => 14,
         'color' => '#FFFFFF',
         'shadow' => ['enabled' => true],
@@ -833,7 +833,7 @@ $wm = (new PHPThumb\Imagick('logo.png'))->resizePercent(20);
 // Imagick: multi-line text with right alignment and background pill
 (new PHPThumb\Imagick('photo.jpg'))
     ->resize(800, 0)
-    ->text("© Acme\n© 2024", 'bottom-right', [
+    ->text("© PHPThumb\n© 2026", 'bottom-right', [
         'size'       => 14,
         'color'      => '#FFFFFF',
         'align'      => 'right',
