@@ -956,5 +956,4 @@ PHP Thumb is released under the **MIT License**. See [LICENSE](LICENSE) for deta
 ## Credits
 
 - Original author: **Ian Selby**
-- Imagick backend implementation
 - Contributors listed on [GitHub](https://github.com/PHPThumb/PHPThumb/graphs/contributors)
