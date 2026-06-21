@@ -430,27 +430,10 @@ class GD extends PHPThumb
 					);
 				$ttf_path = null;
 			}
-			elseif ($ttf_path === null && $cfg['font'] !== null)
-			{
-				// User asked for a specific font and we couldn't satisfy it.
-				// Warn before falling back; this is the case where the warning
-				// is most actionable.
-				trigger_error(
-					sprintf(
-						'GD::text(): could not resolve a usable TTF font from "%s"; ' .
-						'install a system font (e.g. fonts-dejavu-core on Debian/Ubuntu, ' .
-						'dejavu-sans-fonts on Fedora, ttf-dejavu on Arch) or pass an ' .
-						'explicit TTF file path. Falling back to built-in GD font which ' .
-						'ignores size/angle/shadow/stroke options.',
-						$cfg['font']
-						),
-					E_USER_WARNING
-					);
-			}
-			// Note: if $cfg['font'] is null AND $ttf_path is null, we silently
-			// fall back. The user didn't ask for anything, and on a system
-			// without fontconfig and without /usr/share/fonts that's the
-			// expected behavior. Warning here would just be noise.
+			// Note: the "bad font path" warning is now emitted inside
+			// resolveGdFont() itself, so it fires regardless of whether
+			// fontconfig or the path scan ultimately succeeds. No need
+			// to duplicate it here.
 
 			$use_ttf = $ttf_path !== null;
 
@@ -955,9 +938,19 @@ class GD extends PHPThumb
 			{
 				return $font;
 			}
-			// User gave us a bad path. Don't throw — try fontconfig default,
-			// then common paths. The caller will warn because $font was
-			// explicitly non-null.
+			// User gave us a bad path. Warn NOW so the user knows the
+			// fallback is happening, then try to find an alternative.
+			// We do this here (instead of in text()) so the warning
+			// fires regardless of whether fontconfig ultimately succeeds.
+			trigger_error(
+				sprintf(
+					'GD::text(): font path "%s" does not exist; falling back. ' .
+					'Built-in fallback may ignore size/angle/shadow/stroke options.',
+					$font
+					),
+				E_USER_WARNING
+				);
+
 			return $this->resolveViaFontconfig('sans-serif')
 			?? $this->fallbackScanCommonPaths();
 		}
@@ -969,9 +962,7 @@ class GD extends PHPThumb
 			return $resolved;
 		}
 
-		// Step 4: last-resort scan. Useful on minimal containers without
-		// fontconfig, or when the user's requested family isn't installed
-		// and fontconfig falls back to something that doesn't exist on disk.
+		// Step 4: last-resort scan.
 		return $this->fallbackScanCommonPaths();
 	}
 

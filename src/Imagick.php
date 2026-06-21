@@ -826,6 +826,17 @@ class Imagick extends PHPThumb
 		$align    = (string)($options['align']    ?? 'center');
 		$alpha    = max(0, min(100, (int) ($options['alpha'] ?? 100)));
 
+		// Multi-line inter-baseline distance, expressed as a multiplier of
+		// size. 1.0 = ascender + descender exactly (no gap), 1.2 = ~20%
+		// gap, 1.5 = ~50% gap, 2.0 = doubles line spacing. The actual line
+		// height also has a floor of (max ascender + max descender) across
+		// all lines, so this value acts as a visual comfort margin ON TOP
+		// of the measured height. Setting it to 1.0 disables the comfort
+		// margin but still guarantees no overlap.
+		$line_height = isset($options['lineHeight']) && $options['lineHeight'] > 0
+			? (float) $options['lineHeight']
+			: 1.3;
+
 		$shadow = array_merge(
 			['enabled' => false, 'color' => '#000000', 'offsetX' => 1, 'offsetY' => 1, 'blur' => 0],
 			$options['shadow'] ?? []
@@ -851,6 +862,7 @@ class Imagick extends PHPThumb
 			'offsetY'    => $offset_y,
 			'align'      => $align,
 			'alpha'      => $alpha,
+			'lineHeight' => $line_height,
 			'shadow'     => $shadow,
 			'stroke'     => $stroke,
 			'background' => $background,
