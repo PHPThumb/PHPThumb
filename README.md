@@ -49,7 +49,7 @@ PHPThumb 2.5 is a **feature expansion** release — every manipulation method st
 | `gamma()` | Lighten/darken with output gamma |
 | `sharpen()` | Unsharp-mask style sharpening |
 | `border()` | Add a solid-color frame of any thickness |
-| `text()` | Render text with font, color, size, shadow, stroke, background, and 9-grid positioning |
+| `text()` | Render text with font (auto-resolved via fontconfig), color, size, shadow, stroke, background, multi-line alignment, and 9-grid positioning |
 | **Advanced filter wrappers** | `grayscale()`, `brightness()`, `contrast()`, `blur()`, `pixelate()`, `edgeDetect()`, `emboss()`, `smooth()` — chainable convenience wrappers around `imageFilter()` |
 
 All new methods are available on **both** backends. See the dedicated sections below for full documentation.
@@ -69,7 +69,7 @@ All new methods are available on **both** backends. See the dedicated sections b
 - **Crop operations** — From-center, quadrant-based, percentage-based, or vanilla x/y cropping
 - **Rotation** — 90° clockwise/counter-clockwise or arbitrary degrees
 - **EXIF auto-orientation** — Correct phone-photo rotation based on embedded EXIF tags
-- **Text overlay / captioning** — Render text with font, color, size, alignment, shadow, stroke, and background
+- **Text overlay / captioning** — Render text with font (auto-resolved via fontconfig on Linux/macOS), color, size, multi-line alignment (`align`), per-line spacing (`lineHeight`), shadow, stroke, and background pill
 - **Flip / mirror** — Horizontal, vertical, or both axes
 - **Sharpen / unsharp mask** — One-call image sharpening
 - **Gamma correction** — Adjust output gamma to brighten or darken
@@ -174,7 +174,7 @@ Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ i
 | Memory usage | Lower | Higher (full pixel buffer) |
 | Resize quality | Good (bicubic in modern GD) | Excellent (Lanczos / Catmull on Imagick 7) |
 | Rotation | Bicubic approximation | Pixel-accurate |
-| Text rendering | `imagettftext()` for TTF, built-in fonts as fallback | `ImagickDraw` with full TTF + built-in font support |
+| Text rendering | TTF via `imagettftext()` with fontconfig auto-resolution; built-in fonts as fallback. Renders ~25–35% larger than Imagick at the same `size` on Linux. | `ImagickDraw` with TTF and built-in font support. Smaller at the same `size` than GD. |
 | Plugin output | Single-pass GD ops | Compositing with full alpha support |
 | Constructor return on plugin dispatch | `PHPThumb\GD` | `PHPThumb\Imagick` |
 
@@ -394,21 +394,46 @@ Renders `$text` onto the image. The full options array is described below.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `size` | `int` | `12` | Font size (px for Imagick, pt for GD TTF) |
-| `color` | `string\|array` | `'#FFFFFF'` | Text color (hex or `[r, g, b]`) |
-| `font` | `string\|null` | `null` | Path to TTF file (GD) or built-in font name (Imagick). `null` → built-in fallback on GD. |
-| `angle` | `float` | `0` | Rotation in degrees |
-| `offsetX` | `int` | `10` | Padding from the horizontal anchor |
-| `offsetY` | `int` | `10` | Padding from the vertical anchor |
-| `align` | `string` | `'center'` | Per-line horizontal alignment: `'left'` / `'center'` / `'right'` |
-| `alpha` | `int` | `100` | Text opacity, 0–100 |
-| `shadow` | `array` | `['enabled' => false]` | Drop shadow: keys `enabled`, `color`, `offsetX`, `offsetY`, `blur` |
-| `stroke` | `array` | `['enabled' => false]` | Text outline: keys `enabled`, `color`, `width` |
-| `background` | `array` | `['enabled' => false]` | Text background pill: keys `enabled`, `color`, `padding`, `alpha` |
+| `size` | `int` | `12` | Font size in pixels. Both backends interpret this as a pixel size; see the [backend parity note](#backend-parity-text) below for the known size-rendering difference. |
+| `color` | `string\|array` | `'#FFFFFF'` | Text color: hex string (`'#FF8800'`, `'FF8800'`, `'#f80'`), shorthand hex, or `[r, g, b]` array. |
+| `font` | `string\|null` | `null` | TTF file path, fontconfig family name (e.g. `'sans-serif'`, `'DejaVu Sans'`), or Imagick built-in font name (`'Courier'`, `'Helvetica'`, `'Times'`). See the [font resolution strategy](#font-resolution-strategy) below. |
+| `angle` | `float` | `0` | Rotation in degrees. Positive = counter-clockwise. The Imagick backend negates this internally so the same value produces visually identical rotation on both backends. |
+| `offsetX` | `int` | `10` | Padding from the horizontal anchor. |
+| `offsetY` | `int` | `10` | Padding from the vertical anchor. |
+| `align` | `string` | `'center'` | Per-line horizontal alignment: `'left'` / `'center'` / `'right'`. Multi-line text (`"\n"`) is rendered line-by-line so per-line alignment works correctly. |
+| `alpha` | `int` | `100` | Text opacity, 0–100. |
+| `lineHeight` | `float` | `1.5` | Multi-line spacing multiplier on `size`. `1.0` = tight (no gap), `1.5` = ~50% gap, `2.0` = doubles line spacing. The actual line height also has a floor of the font's measured `ascender + descender`, so lines never overlap regardless of the multiplier. |
+| `shadow` | `array` | `['enabled' => false]` | Drop shadow: keys `enabled`, `color`, `offsetX`, `offsetY`, `blur`. The `blur` key is currently parsed but unused (both backends use vector text rendering; blurred shadows would require a separate Gaussian blur pass). |
+| `stroke` | `array` | `['enabled' => false]` | Text outline: keys `enabled`, `color`, `width`. Requires a TTF font on GD; on Imagick, built-in fonts don't stroke reliably — pass a TTF for consistent results. |
+| `background` | `array` | `['enabled' => false]` | Text background pill: keys `enabled`, `color`, `padding`, `alpha`. Drawn once around the full multi-line block. |
+
+#### Font resolution strategy
+
+The `'font'` option accepts three shapes of input, resolved in order:
+
+1. **Explicit TTF file path** — used directly if the file exists. If the path doesn't exist, the GD backend emits an `E_USER_WARNING` and falls through; the Imagick backend falls through silently.
+2. **fontconfig family name** (no `/`, no file extension) — resolved via `fc-match` if fontconfig is installed. Examples: `'sans-serif'`, `'DejaVu Sans'`, `'Liberation Serif'`. This is the recommended approach on Linux/macOS — no need to hard-code system paths.
+3. **System font path scan** — last-resort lookup of well-known paths: `/usr/share/fonts/dejavu/DejaVuSans*.ttf`, `/Library/Fonts/Arial*.ttf`, `C:\Windows\Fonts\arial*.ttf`, etc.
+4. **Built-in font** (GD only) — bitmap font index 5. **This ignores `size`, `angle`, `shadow`, and `stroke`.** Install `fonts-dejavu-core` (Debian/Ubuntu), `dejavu-sans-fonts` (Fedora), or `ttf-dejavu` (Arch) to get a real TTF font and unlock the full option surface.
+
+#### Draw order
+
+For each line, layers are rendered in this order:
+
+1. **Background pill** — drawn once around the full multi-line block (not per-line), with the configured `padding` margin.
+2. **Shadow** — separate render pass (GD: a second `imagettftext()` call; Imagick: separate `annotateImage()` call with a shadow-only `ImagickDraw`), offset by `shadow.offsetX/Y`.
+3. **Stroke** — separate render pass. GD uses a per-pixel-offset replication loop (since `imagettftext()` has no native stroke); Imagick uses an `ImagickDraw` with transparent fill + `setStrokeWidth()`. Both produce a stroke outline that sits at the glyph edge.
+4. **Main text** — final render pass, on top of all the above.
+
+#### Multi-line metrics
+
+Line spacing uses font-level metrics measured from a probe string (`'Hgjpqy0123456789'` — covers both tall caps and tall descenders) rather than per-string metrics. This avoids the quirk where `imagettfbbox()` (and Imagick's `queryFontMetrics()`) under-report the descender for strings without descender glyphs — e.g. `'PHPThumb 2.5'` has no `g`, `p`, `q`, or `y`, so its per-string bbox returns a near-zero descender. With probe-based metrics, line spacing is correct for any input string.
+
+When stroke is enabled, the formula adds `2 × stroke_w` to the line height — each stroked line expands by `stroke_w` in all directions, so the inter-line gap is reduced by `stroke_w` on each side. The compensation cancels this.
 
 ```php
-// Simple caption
-$thumb->text('© 2025 Acme', 'bottom-right', [
+// Simple caption (uses fontconfig default font)
+$thumb->text('© 2026 PHPThumb', 'bottom-right', [
     'size'  => 14,
     'color' => '#FFFFFF',
     'shadow' => ['enabled' => true],
@@ -426,16 +451,33 @@ $thumb->text('SALE', 'center', [
     ],
 ]);
 
-// TTF font with stroke (Imagick only — built-in fonts can't be stroked reliably)
+// TTF font with stroke, shadow, and rotation
 $thumb->text('Brand', 'top-left', [
     'font'   => '/path/to/brand.ttf',
     'size'   => 36,
     'color'  => '#222222',
+    'angle'  => -15,    // 15° clockwise on both backends
+    'shadow' => ['enabled' => true, 'color' => '#000000', 'offsetX' => 2, 'offsetY' => 2],
     'stroke' => ['enabled' => true, 'color' => '#FFFFFF', 'width' => 2],
+]);
+
+// Multi-line, right-aligned, with a background pill and explicit line spacing
+$thumb->text("© PHPThumb\n© 2026", 'bottom-right', [
+    'size'       => 14,
+    'color'      => '#FFFFFF',
+    'align'      => 'right',
+    'lineHeight' => 1.4,
+    'background' => ['enabled' => true, 'color' => '#000000', 'padding' => 8, 'alpha' => 60],
 ]);
 ```
 
-> **Backend note:** On GD, stroke rendering requires a TTF font (`imagettftext()` does the stroke internally). On Imagick, both built-in and TTF fonts support stroke via `ImagickDraw::setStrokeColor` + `setStrokeWidth`.
+#### Backend parity: text
+
+The GD and Imagick backends use **opposite native rotation conventions** (`imagettftext()` rotates CCW for positive angles; `annotateImage()` rotates CW). To preserve a consistent API, the Imagick backend negates `angle` internally, so `'angle' => -15` means 15° clockwise on both backends regardless of which one you instantiate.
+
+The GD backend renders text noticeably larger than Imagick at the same `size` value — typically ~25–35% larger on Linux, due to different DPI conventions. If you need pixel-identical output across backends, scale the `size` value per backend in your calling code (e.g. multiply by 0.78 for GD if your target value is calibrated for Imagick). This is a documented backend difference, not a bug.
+
+> **Backend note (stroke):** On GD, stroke rendering requires a TTF font (`imagettftext()` does the stroke internally). On Imagick, stroke works for both built-in and TTF fonts via `ImagickDraw::setStrokeColor` + `setStrokeWidth`, but built-in fonts render less cleanly than TTFs — pass a TTF for consistent results.
 
 ### Advanced Filters
 
@@ -719,6 +761,38 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
     ->sharpen()
     ->text('Final', 'bottom-right', ['color' => '#FFFFFF', 'shadow' => ['enabled' => true]])
     ->save('final.jpg', 'JPEG');
+
+// Multi-line caption with right alignment, custom line spacing, and a background pill
+(new PHPThumb\GD('photo.jpg'))
+    ->resize(800, 0)
+    ->text("© PHPThumb\n© 2026", 'bottom-right', [
+        'size'       => 14,
+        'color'      => '#FFFFFF',
+        'align'      => 'right',
+        'lineHeight' => 1.4,
+        'background' => ['enabled' => true, 'color' => '#000000', 'padding' => 8, 'alpha' => 60],
+    ])
+    ->save('captioned-multi.jpg', 'JPEG');
+
+// Stylized watermark: large rotated text with stroke + shadow + background
+(new PHPThumb\GD('photo.jpg'))
+    ->text('SALE', 'center', [
+        'size'   => 48,
+        'color'  => '#FF3300',
+        'angle'  => -15,       // 15° clockwise on both backends
+        'shadow' => ['enabled' => true, 'color' => '#000000', 'offsetX' => 3, 'offsetY' => 3],
+        'stroke' => ['enabled' => true, 'color' => '#FFFFFF', 'width' => 2],
+    ])
+    ->save('sale-watermark.jpg', 'JPEG');
+
+// Text with explicit fontconfig family name (no path needed on Linux/macOS)
+(new PHPThumb\GD('photo.jpg'))
+    ->text('Welcome', 'center', [
+        'font'  => 'DejaVu Sans',   // resolved via fc-match
+        'size'  => 36,
+        'color' => '#FFFFFF',
+    ])
+    ->show();
 ```
 
 The same examples with Imagick:
@@ -755,6 +829,30 @@ $wm = (new PHPThumb\Imagick('logo.png'))->resizePercent(20);
 (new PHPThumb\Imagick('photo.jpg', [], [
     new PHPThumb\Plugins\Watermark($wm, 'bottom right', 50, 10, 10)
 ]))->resize(800, 0)->show();
+
+// Imagick: multi-line text with right alignment and background pill
+(new PHPThumb\Imagick('photo.jpg'))
+    ->resize(800, 0)
+    ->text("© Acme\n© 2024", 'bottom-right', [
+        'size'       => 14,
+        'color'      => '#FFFFFF',
+        'align'      => 'right',
+        'lineHeight' => 1.4,
+        'background' => ['enabled' => true, 'color' => '#000000', 'padding' => 8, 'alpha' => 60],
+    ])
+    ->save('captioned-multi.jpg', 'JPEG');
+
+// Imagick: rotated TTF text with stroke (built-in fonts can't be stroked reliably)
+(new PHPThumb\Imagick('photo.jpg'))
+    ->text('SALE', 'center', [
+        'font'   => '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        'size'   => 48,
+        'color'  => '#FF3300',
+        'angle'  => -15,
+        'shadow' => ['enabled' => true, 'color' => '#000000', 'offsetX' => 3, 'offsetY' => 3],
+        'stroke' => ['enabled' => true, 'color' => '#FFFFFF', 'width' => 2],
+    ])
+    ->show();
 ```
 
 Run any example directly:
