@@ -130,7 +130,7 @@ class GD extends PHPThumb
 			$color[0],
 			$color[1],
 			$color[2]
-		);
+			);
 
 		// fill our working image with the fill color
 		imagefill(
@@ -138,7 +138,7 @@ class GD extends PHPThumb
 			0,
 			0,
 			$fill_color
-		);
+			);
 
 		// copy the image into the center of our working image
 		imagecopyresampled(
@@ -152,7 +152,7 @@ class GD extends PHPThumb
 			$this->current_dimensions['height'],
 			$this->current_dimensions['width'],
 			$this->current_dimensions['height']
-		);
+			);
 
 		// update all the variables and resources to be correct
 		$this->old_image					= $this->working_image;
@@ -228,7 +228,7 @@ class GD extends PHPThumb
 			0, 0,
 			$new_width, $new_height,
 			$border_color
-		);
+			);
 
 		// Preserve alpha when the source is PNG so the original's transparent
 		// pixels stay transparent in the center.
@@ -248,7 +248,7 @@ class GD extends PHPThumb
 			0,
 			$current_width,
 			$current_height
-		);
+			);
 
 		// Commit.
 		$this->old_image                 = $this->working_image;
@@ -342,18 +342,39 @@ class GD extends PHPThumb
 	 *  - bottom / south / bottom-center
 	 *  - bottom-right / southeast
 	 *
+	 * Font resolution (mirrors Imagick::text() so both backends behave the same):
+	 *
+	 *  - $options['font'] = null   → fontconfig default (sans-serif)
+	 *  - $options['font'] = path   → path if file exists, else fontconfig default
+	 *  - $options['font'] = name   → fontconfig resolution
+	 *  - everything fails          → built-in GD font, with E_USER_WARNING
+	 *
+	 * Multi-line text via "\n". The `align` option ('left' | 'center' | 'right')
+	 * is honored per-line by issuing one rendering call per line and computing
+	 * each line's X from the block bbox (GD's imagettftext() does not natively
+	 * support per-line alignment within multi-line strings).
+	 *
+	 * Draw order, per line:
+	 *
+	 *   1. Background pill (drawn once around the block, not per-line)
+	 *   2. Shadow    (separate imagettftext pass)
+	 *   3. Stroke    (pixel-offset replication loop; imagettftext has no native stroke)
+	 *   4. Main text (final imagettftext pass)
+	 *
 	 * Options (all optional):
 	 *
-	 *  - size      (int)   Font size in points (default: $this->options['textDefaultSize'])
+	 *  - size      (int)   Font size in pixels (default: $this->options['textDefaultSize'])
 	 *  - color     (string|array)  Hex string or [r, g, b] (default: '#FFFFFF')
-	 *  - font      (string|null)   Path to TTF; null → built-in GD font fallback
+	 *  - font      (string|null)   TTF path, font family name, or null
 	 *  - angle     (float) Rotation in degrees (default: 0)
 	 *  - offsetX   (int)   Horizontal padding from anchor (default: 10)
 	 *  - offsetY   (int)   Vertical padding from anchor (default: 10)
-	 *  - align     (string) 'left' | 'center' | 'right' (default: 'center')
-	 *  - alpha     (int)   Text opacity 0..100 (default: 100)
+	 *  - align     (string) 'left' | 'center' | 'right' per-line (default: 'center')
+	 *  - alpha     (int)   Text opacity 0–100 (default: 100)
+	 *  - lineHeight(float) Inter-line spacing multiplier; default 1.5.
+	 *                      Imagick: see Imagick::text() for the matching knob.
 	 *  - shadow    (array)  ['enabled' => bool, 'color', 'offsetX', 'offsetY', 'blur']
-	 *  - stroke    (array)  ['enabled' => bool, 'color', 'width']  (requires TTF)
+	 *  - stroke    (array)  ['enabled' => bool, 'color', 'width']
 	 *  - background(array)  ['enabled' => bool, 'color', 'padding', 'alpha']
 	 *
 	 * @param string $text     The text to render. Multi-line via "\n" supported.
@@ -381,80 +402,267 @@ class GD extends PHPThumb
 			$current_width  = $this->current_dimensions['width'];
 			$current_height = $this->current_dimensions['height'];
 
-			$use_ttf = $cfg['font'] !== null && function_exists('imagettftext');
+			// -----------------------------------------------------------------
+			// Font resolution. Mirrors Imagick::resolveFont() so the two
+			// backends accept the same font arguments and produce the same
+			// default behavior. The user-facing impact:
+			//
+			//   - null/empty font now resolves to fontconfig's sans-serif
+			//     instead of silently dropping to the GD built-in font.
+			//   - 'font' => 'DejaVu Sans' works (fontconfig family name),
+			//     not just literal paths.
+			//   - Bad paths still fall back, but with a loud E_USER_WARNING
+			//     so users stop wondering why their shadow option is ignored.
+			// -----------------------------------------------------------------
+			$ttf_path = $this->resolveGdFont($cfg['font']);
+
+			if ($ttf_path !== null && !function_exists('imagettftext'))
+			{
+				// We found a usable TTF, but the PHP build can't render it.
+				// Downgrade to the built-in font with a warning so the user
+				// knows to install ext-gd's FreeType support (most distros
+				// ship it; some slim builds disable it).
+				trigger_error(
+					'GD::text(): imagettftext() is not available in this PHP build; ' .
+					'falling back to built-in GD font. Built-in fonts ignore ' .
+					'size/angle/shadow/stroke options.',
+					E_USER_WARNING
+					);
+				$ttf_path = null;
+			}
+			elseif ($ttf_path === null && $cfg['font'] !== null)
+			{
+				// User asked for a specific font and we couldn't satisfy it.
+				// Warn before falling back; this is the case where the warning
+				// is most actionable.
+				trigger_error(
+					sprintf(
+						'GD::text(): could not resolve a usable TTF font from "%s"; ' .
+						'install a system font (e.g. fonts-dejavu-core on Debian/Ubuntu, ' .
+						'dejavu-sans-fonts on Fedora, ttf-dejavu on Arch) or pass an ' .
+						'explicit TTF file path. Falling back to built-in GD font which ' .
+						'ignores size/angle/shadow/stroke options.',
+						$cfg['font']
+						),
+					E_USER_WARNING
+					);
+			}
+			// Note: if $cfg['font'] is null AND $ttf_path is null, we silently
+			// fall back. The user didn't ask for anything, and on a system
+			// without fontconfig and without /usr/share/fonts that's the
+			// expected behavior. Warning here would just be noise.
+
+			$use_ttf = $ttf_path !== null;
 
 			if ($use_ttf)
 			{
-				$lines = explode("\n", $text);
-				$line_height = (int) round($cfg['size'] * 1.2);
+				$lines     = explode("\n", $text);
+				$num_lines = count($lines);
 
-				$max_line_width = 0;
+				$line_widths            = [];
+				$line_visual_heights    = [];
+				$max_line_width         = 0;
+				$max_line_visual_height = 0;
+
 				foreach ($lines as $line)
 				{
-					$box = imagettfbbox($cfg['size'], $cfg['angle'], $cfg['font'], $line);
+					// ---- Width & visual height at the requested angle ----
+					$box = imagettfbbox($cfg['size'], $cfg['angle'], $ttf_path, $line);
 					if ($box === false)
 					{
 						throw new RuntimeException(
-							'GD imagettfbbox() failed for font: ' . $cfg['font']
+							'GD imagettfbbox() failed for font: ' . $ttf_path
 							);
 					}
+
+					// imagettfbbox returns 4 corner pairs in CCW order:
+					// (lower-left, lower-right, upper-right, upper-left).
+					// Width is always xmax - xmin regardless of rotation angle.
 					$line_w = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
+					$line_widths[] = $line_w;
 					if ($line_w > $max_line_width)
 					{
 						$max_line_width = $line_w;
 					}
+
+					// Visual height = ymax - ymin of the rotated bbox.
+					$ys = [$box[1], $box[3], $box[5], $box[7]];
+					$line_visual_h = (int) (max($ys) - min($ys));
+					$line_visual_heights[] = $line_visual_h;
+					if ($line_visual_h > $max_line_visual_height)
+					{
+						$max_line_visual_height = $line_visual_h;
+					}
 				}
 
-				$text_width  = $max_line_width;
-				$text_height = $line_height * count($lines);
+				// ---- Font-level ascender + descender, ONCE, via probe string ----
+				// imagettfbbox() returns the bbox of only the glyphs IN the string,
+				// not the font's typographic metrics. A user-supplied "PHPThumb 2.5"
+				// (no descender glyphs) would under-report the descender; an
+				// all-lowercase string would under-report the ascender. Probing
+				// with a string that exercises every glyph category gives the
+				// font's worst-case ascender + descender regardless of input.
+				//
+				// y-coords: baseline at y=0, glyph tops NEGATIVE, descenders POSITIVE.
+				//   abs(min(box[5], box[7]))  → ascender (positive pixels)
+				//   max(box[1], box[3])        → descender (positive pixels)
+				$probe = 'Hgjpqy0123456789';
+				$probe_box = imagettfbbox($cfg['size'], 0, $ttf_path, $probe);
+				if ($probe_box === false)
+				{
+					throw new RuntimeException(
+						'GD imagettfbbox() failed for font probe: ' . $ttf_path
+						);
+				}
+				$font_ascender  = (int) abs(min($probe_box[5], $probe_box[7]));
+				$font_descender = (int) max($probe_box[1], $probe_box[3]);
 
-				[$x, $y] = $this->computeTextTopLeft(
+				// ---- Line height ----
+				// Take the LARGER of:
+				//   (a) (font_ascender + font_descender) * 1.3  — the 30%
+				//       buffer accounts for anti-aliasing softening that
+				//       effectively widens rendered glyphs by 0.5-1 px on
+				//       each edge, eating into the inter-line gap.
+				//   (b) size * lineHeight                       — user-tunable
+				//       multiplier (default 1.3).
+				//
+				// Using max() guarantees no overlap regardless of which
+				// one is larger. Either bound is independently safe.
+				$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
+				? (float) $cfg['lineHeight']
+				: 1.3;
+
+				// When stroke is enabled, EACH stroked line expands by
+				// stroke_w in all directions: line 0's descender reaches
+				// stroke_w lower, line 1's ascender reaches stroke_w higher.
+				// Total gap stolen between lines = 2 × stroke_w.
+				// Adding 2 × stroke_w to line_height exactly cancels this,
+				// so stroked multi-line text has the same visual gap as
+				// un-stroked text.
+				$stroke_padding = $cfg['stroke']['enabled']
+				? max(1, (int) $cfg['stroke']['width']) * 2
+				: 0;
+
+				$buffered_font_height = (int) round(($font_ascender + $font_descender) * 1.3 + $cfg['size'] * 0.1) + $stroke_padding;
+				$size_based_height    = (int) round($cfg['size'] * $multiplier) + $stroke_padding;
+				$line_height          = max($buffered_font_height, $size_based_height);
+
+				// ---- Block dimensions ----
+				// Width: widest single line. Height: tallest single line's
+				// visual extent + (n-1) inter-line spacings. Using the
+				// per-line visual height (not size * n) ensures the block
+				// bbox reflects the actual inked extent, with the rest of
+				// the height coming from inter-line spacing.
+				$block_width  = $max_line_width;
+				$block_height = $max_line_visual_height + max(0, ($num_lines - 1) * $line_height);
+
+				[$block_x, $block_y] = $this->computeTextTopLeft(
 					$anchor, $cfg['offsetX'], $cfg['offsetY'],
 					$current_width, $current_height,
-					$text_width, $text_height
+					$block_width, $block_height
 					);
 
+				// First-line baseline uses the FONT-LEVEL ascender, not the
+				// per-line ascender. The font-level value (from the probe) is
+				// correct for any input string, even ones whose first line
+				// happens to contain no ascender glyphs (e.g. all-lowercase,
+				// starting with 'i' or 'l').
+				$first_line_baseline = $block_y + $font_ascender;
+
+				// ---- Background pill (drawn once around the block) ----
 				if ($cfg['background']['enabled'])
 				{
 					$this->drawTextBackgroundGd(
-						$x, $y, $text_width, $text_height,
+						$block_x, $block_y, $block_width, $block_height,
 						$cfg['background']
 						);
 				}
 
+				// ---- Pre-allocate colors once ----
+				$main_rgb = $this->parseColor($cfg['color']);
+				$main_color = imagecolorallocatealpha(
+					$this->old_image,
+					$main_rgb['r'], $main_rgb['g'], $main_rgb['b'],
+					$this->alphaToGd127($cfg['alpha'])
+					);
+				if ($main_color === false)
+				{
+					throw new RuntimeException('GD: failed to allocate main text color');
+				}
+
+				$shadow_color = null;
 				if ($cfg['shadow']['enabled'])
 				{
-					$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
-					$shadow_color = imagecolorallocatealpha(
+					$s = $this->parseColor($cfg['shadow']['color']);
+					$c = imagecolorallocatealpha(
 						$this->old_image,
-						$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b'],
+						$s['r'], $s['g'], $s['b'],
 						$this->alphaToGd127(100)
 						);
-					if ($shadow_color !== false)
+					if ($c === false)
+					{
+						throw new RuntimeException('GD: failed to allocate shadow color');
+					}
+					$shadow_color = $c;
+				}
+
+				$stroke_color = null;
+				$stroke_w     = 0;
+				if ($cfg['stroke']['enabled'])
+				{
+					$s = $this->parseColor($cfg['stroke']['color']);
+					$c = imagecolorallocatealpha(
+						$this->old_image,
+						$s['r'], $s['g'], $s['b'],
+						$this->alphaToGd127(100)
+						);
+					if ($c === false)
+					{
+						throw new RuntimeException('GD: failed to allocate stroke color');
+					}
+					$stroke_color = $c;
+					$stroke_w = max(1, (int) $cfg['stroke']['width']);
+				}
+
+				$align_normalized = strtolower($cfg['align']);
+
+				// ---- Per-line rendering in shadow → stroke → main order ----
+				foreach ($lines as $i => $line)
+				{
+					if ($line === '')
+					{
+						continue;
+					}
+
+					$line_w = $line_widths[$i];
+					$line_x = match ($align_normalized) {
+						'left'  => $block_x,
+						'right' => $block_x + $block_width - $line_w,
+						default => (int) ($block_x + ($block_width - $line_w) / 2),
+					};
+
+					// baseline of line i = first-line baseline + i * line_height.
+					$baseline = $first_line_baseline + $i * $line_height;
+
+					// 1. Shadow — drawn beneath everything else.
+					if ($shadow_color !== null)
 					{
 						imagettftext(
 							$this->old_image,
 							$cfg['size'], $cfg['angle'],
-							$x + $cfg['shadow']['offsetX'],
-							$y + $cfg['shadow']['offsetY'] + $line_height,
+							$line_x + $cfg['shadow']['offsetX'],
+							$baseline + $cfg['shadow']['offsetY'],
 							$shadow_color,
-							$cfg['font'],
-							implode("\n", $lines)
+							$ttf_path,
+							$line
 							);
 					}
-				}
 
-				if ($cfg['stroke']['enabled'])
-				{
-					$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
-					$stroke_color = imagecolorallocatealpha(
-						$this->old_image,
-						$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b'],
-						$this->alphaToGd127(100)
-						);
-					if ($stroke_color !== false)
+					// 2. Stroke — replicate text at every pixel offset within
+					//    stroke_w. imagettftext() has no native stroke, so
+					//    this rasterization trick is the only option in GD.
+					if ($stroke_color !== null)
 					{
-						$stroke_w = max(1, (int) $cfg['stroke']['width']);
 						for ($sx = -$stroke_w; $sx <= $stroke_w; $sx++)
 						{
 							for ($sy = -$stroke_w; $sy <= $stroke_w; $sy++)
@@ -466,69 +674,71 @@ class GD extends PHPThumb
 								imagettftext(
 									$this->old_image,
 									$cfg['size'], $cfg['angle'],
-									$x + $sx,
-									$y + $sy + $line_height,
+									$line_x + $sx,
+									$baseline + $sy,
 									$stroke_color,
-									$cfg['font'],
-									implode("\n", $lines)
+									$ttf_path,
+									$line
 									);
 							}
 						}
 					}
-				}
 
-				$rgb = $this->parseColor($cfg['color']);
-				$text_color = imagecolorallocatealpha(
-					$this->old_image,
-					$rgb['r'], $rgb['g'], $rgb['b'],
-					$this->alphaToGd127($cfg['alpha'])
-					);
-				if ($text_color === false)
-				{
-					throw new RuntimeException('GD: failed to allocate text color');
+					// 3. Main text — on top of stroke and shadow.
+					imagettftext(
+						$this->old_image,
+						$cfg['size'], $cfg['angle'],
+						$line_x,
+						$baseline,
+						$main_color,
+						$ttf_path,
+						$line
+						);
 				}
-
-				imagettftext(
-					$this->old_image,
-					$cfg['size'], $cfg['angle'],
-					$x,
-					$y + $line_height,
-					$text_color,
-					$cfg['font'],
-					implode("\n", $lines)
-					);
 			}
 			else
 			{
-				// Built-in GD font fallback
-				$font = 5;
+				// Built-in GD font fallback.
+				//
+				// Bitmap fonts have no ascender/descender separation, so we
+				// use char_h directly. No bbox under-reporting quirk to
+				// compensate for here, but we use the same lineHeight
+				// multiplier (default 1.5) for cross-backend consistency.
+				$font   = 5;
 				$char_w = imagefontwidth($font);
 				$char_h = imagefontheight($font);
 
+				$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
+				? (float) $cfg['lineHeight']
+				: 1.5;
+				$line_height = (int) round($char_h * $multiplier);
+
 				$lines = explode("\n", $text);
-				$max_line_width = 0;
+				$line_widths     = [];
+				$max_line_width  = 0;
 				foreach ($lines as $line)
 				{
 					$lw = strlen($line) * $char_w;
+					$line_widths[] = $lw;
 					if ($lw > $max_line_width)
 					{
 						$max_line_width = $lw;
 					}
 				}
 
-				$text_width  = $max_line_width;
-				$text_height = $char_h * count($lines);
+				$block_width  = $max_line_width;
+				$block_height = $char_h + max(0, (count($lines) - 1) * $line_height);
 
-				[$x, $y] = $this->computeTextTopLeft(
+				[$block_x, $block_y] = $this->computeTextTopLeft(
 					$anchor, $cfg['offsetX'], $cfg['offsetY'],
 					$current_width, $current_height,
-					$text_width, $text_height
+					$block_width, $block_height
 					);
 
 				if ($cfg['background']['enabled'])
 				{
 					$this->drawTextBackgroundGd(
-						$x, $y, $text_width, $text_height,
+						$block_x, $block_y, $block_width, $block_height,
 						$cfg['background']
 						);
 				}
@@ -544,11 +754,21 @@ class GD extends PHPThumb
 					throw new RuntimeException('GD: failed to allocate text color');
 				}
 
-				$yy = $y;
-				foreach ($lines as $line)
+				// imagestring() expects the TOP-LEFT of the bitmap glyph,
+				// not the baseline. So for vertical centering, first line's
+				// y = block_y exactly (no ascender offset).
+				$align_normalized = strtolower($cfg['align']);
+				$yy = $block_y;
+				foreach ($lines as $i => $line)
 				{
-					imagestring($this->old_image, $font, $x, $yy, $line, $text_color);
-					$yy += $char_h;
+					$line_w = $line_widths[$i];
+					$line_x = match ($align_normalized) {
+						'left'  => $block_x,
+						'right' => $block_x + $block_width - $line_w,
+						default => (int) ($block_x + ($block_width - $line_w) / 2),
+					};
+					imagestring($this->old_image, $font, $line_x, $yy, $line, $text_color);
+					$yy += $line_height;
 				}
 			}
 
@@ -581,6 +801,17 @@ class GD extends PHPThumb
 		$align    = (string)($options['align']    ?? 'center');
 		$alpha    = max(0, min(100, (int) ($options['alpha'] ?? 100)));
 
+		// Multi-line inter-baseline distance, expressed as a multiplier of
+		// size. 1.0 = ascender + descender exactly (no gap), 1.2 = ~20%
+		// gap, 1.5 = ~50% gap, 2.0 = doubles line spacing. The actual line
+		// height also has a floor of (max ascender + max descender) across
+		// all lines, so this value acts as a visual comfort margin ON TOP
+		// of the measured height. Setting it to 1.0 disables the comfort
+		// margin but still guarantees no overlap.
+		$line_height = isset($options['lineHeight']) && $options['lineHeight'] > 0
+		? (float) $options['lineHeight']
+		: 1.2;
+
 		$shadow = array_merge(
 			['enabled' => false, 'color' => '#000000', 'offsetX' => 1, 'offsetY' => 1, 'blur' => 0],
 			$options['shadow'] ?? []
@@ -606,6 +837,7 @@ class GD extends PHPThumb
 			'offsetY'    => $offset_y,
 			'align'      => $align,
 			'alpha'      => $alpha,
+			'lineHeight' => $line_height,
 			'shadow'     => $shadow,
 			'stroke'     => $stroke,
 			'background' => $background,
@@ -692,6 +924,166 @@ class GD extends PHPThumb
 	}
 
 	/**
+	 * Resolves a font argument to a TTF/OTF file path on disk.
+	 *
+	 * Strategy mirrors Imagick::resolveFont() exactly, so both backends accept
+	 * the same arguments:
+	 *
+	 *   1. null/empty    → fontconfig's system default (sans-serif)
+	 *   2. path-like     → return as-is if file exists, else fall through
+	 *   3. family name   → resolve via fontconfig (fc-match)
+	 *   4. nothing works → scan well-known system paths as last resort
+	 *
+	 * @param string|null $font  User-supplied 'font' option value.
+	 * @return string|null       Absolute path to a TTF/OTF file, or null if
+	 *                           no usable font could be located. The caller
+	 *                           decides whether to warn before falling back.
+	 */
+	protected function resolveGdFont(?string $font): ?string
+	{
+		// Step 1: null/empty → fontconfig default.
+		if ($font === null || $font === '')
+		{
+			return $this->resolveViaFontconfig('sans-serif')
+			?? $this->fallbackScanCommonPaths();
+		}
+
+		// Step 2: looks like a filesystem path?
+		if ($this->looksLikeFontPath($font))
+		{
+			if (is_file($font))
+			{
+				return $font;
+			}
+			// User gave us a bad path. Don't throw — try fontconfig default,
+			// then common paths. The caller will warn because $font was
+			// explicitly non-null.
+			return $this->resolveViaFontconfig('sans-serif')
+			?? $this->fallbackScanCommonPaths();
+		}
+
+		// Step 3: treat as a font family name.
+		$resolved = $this->resolveViaFontconfig($font);
+		if ($resolved !== null)
+		{
+			return $resolved;
+		}
+
+		// Step 4: last-resort scan. Useful on minimal containers without
+		// fontconfig, or when the user's requested family isn't installed
+		// and fontconfig falls back to something that doesn't exist on disk.
+		return $this->fallbackScanCommonPaths();
+	}
+
+	/**
+	 * Heuristic: does this string look like a filesystem path rather than a
+	 * font family name? Recognizes '/' or '\' separators and TTF/OTF/TTC
+	 * extensions (case-insensitive).
+	 */
+	protected function looksLikeFontPath(string $font): bool
+	{
+		if (str_contains($font, '/') || str_contains($font, '\\'))
+		{
+			return true;
+		}
+
+		$lower = strtolower($font);
+		foreach (['.ttf', '.otf', '.ttc'] as $ext)
+		{
+			if (str_ends_with($lower, $ext))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Resolves a font family name to a TTF file path via fontconfig.
+	 *
+	 * Cached `command -v fc-match` lookup (one shell call per process); the
+	 * actual fc-match call is uncached because we may be called with different
+	 * family names per invocation.
+	 *
+	 * @param string $family  Family name (e.g. 'sans-serif', 'DejaVu Sans',
+	 *                        'Liberation Serif'). Passed through to fc-match.
+	 * @return string|null    Absolute path, or null if fontconfig is unavailable
+	 *                        or doesn't recognize the family.
+	 */
+	protected function resolveViaFontconfig(string $family): ?string
+	{
+		static $available = null;
+		if ($available === null)
+		{
+			$path = trim((string) @shell_exec('command -v fc-match 2>/dev/null'));
+			$available = ($path !== '');
+		}
+		if (!$available)
+		{
+			return null;
+		}
+
+		$cmd  = 'fc-match -f "%{file}" ' . escapeshellarg($family) . ' 2>/dev/null';
+		$path = trim((string) @shell_exec($cmd));
+
+		if ($path === '' || !is_file($path))
+		{
+			return null;
+		}
+
+		return $path;
+	}
+
+	/**
+	 * Last-resort scan of well-known font directories.
+	 *
+	 * Useful on systems without fontconfig (rare on Linux, common on minimal
+	 * Docker images), or when fontconfig returns a path to a font that's been
+	 * uninstalled. Order is "most modern distro" first, "legacy layout" second;
+	 * either family is acceptable.
+	 *
+	 * @return string|null First TTF/OTF file found, or null if none of the
+	 *                     candidates exist on this system.
+	 */
+	protected function fallbackScanCommonPaths(): ?string
+	{
+		$candidates = [
+			// Modern Debian/Ubuntu/Fedora/RHEL/openSUSE (fonts-dejavu-core)
+			'/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+			'/usr/share/fonts/dejavu/DejaVuSans.ttf',
+
+			// Legacy Debian/Ubuntu (pre-22.04) layout
+			'/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+			'/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+
+			// Arch / Manjaro (ttf-dejavu)
+			'/usr/share/fonts/TTF/DejaVuSans-Bold.ttf',
+			'/usr/share/fonts/TTF/DejaVuSans.ttf',
+
+			// macOS
+			'/Library/Fonts/Arial Bold.ttf',
+			'/Library/Fonts/Arial.ttf',
+			'/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+			'/System/Library/Fonts/Supplemental/Arial.ttf',
+
+			// Windows
+			'C:\\Windows\\Fonts\\arialbd.ttf',
+			'C:\\Windows\\Fonts\\arial.ttf',
+		];
+
+		foreach ($candidates as $candidate)
+		{
+			if (is_file($candidate))
+			{
+				return $candidate;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * Maps 0..100 percentage alpha to GD's 0..127 (where 0 = opaque, 127 = transparent).
 	 */
 	protected function alphaToGd127(int $percent): int
@@ -713,7 +1105,7 @@ class GD extends PHPThumb
 				$this->old_image,
 				$rgb['r'], $rgb['g'], $rgb['b'],
 				$this->alphaToGd127((int) ($bg['alpha'] ?? 75))
-			);
+				);
 			if ($bg_color === false)
 			{
 				return;
@@ -723,7 +1115,7 @@ class GD extends PHPThumb
 				$x - $padding, $y - $padding,
 				$x + $w + $padding, $y + $h + $padding,
 				$bg_color
-			);
+				);
 	}
 
 	/**
@@ -778,7 +1170,7 @@ class GD extends PHPThumb
 			$this->new_dimensions['new_height'],
 			$this->current_dimensions['width'],
 			$this->current_dimensions['height']
-		);
+			);
 
 		// update all the variables and resources to be correct
 		$this->old_image					= $this->working_image;
@@ -791,7 +1183,7 @@ class GD extends PHPThumb
 	/**
 	 * Adaptively Resizes the Image
 	 *
-	 * This function attempts to get the image to as close to the provided dimensions as possible, and then crops the
+	 * This function attempts to get the image to be as close to the provided dimensions as possible, and then crops the
 	 * remaining overflow (from the center) to get the image to be the size specified
 	 */
 	public function adaptiveResize(int $width, int $height): GD
@@ -854,7 +1246,7 @@ class GD extends PHPThumb
 			$crop_height,
 			$crop_width,
 			$crop_height
-		);
+			);
 
 		// update all the variables and resources to be correct
 		$this->old_image					= $this->working_image;
@@ -867,7 +1259,7 @@ class GD extends PHPThumb
 	/**
 	 * Adaptively Resizes the Image and Crops Using a Percentage
 	 *
-	 * This function attempts to get the image to as close to the provided dimensions as possible, and then crops the
+	 * This function attempts to get the image to be as close to the provided dimensions as possible, and then crops the
 	 * remaining overflow using a provided percentage to get the image to be the size specified.
 	 *
 	 * The percentage mean different things depending on the orientation of the original image.
@@ -881,7 +1273,7 @@ class GD extends PHPThumb
 	 * A percentage of 50 would crop the image to the center which would be the same as using
 	 * adaptiveResizeQuadrant() with $quadrant = 'C', or even the original adaptiveResize()
 	 *
-	 * A percentage of 100 would crop the image to the image all the way to the right, etc., etc.
+	 * A percentage of 100 would crop the image all the way to the right, etc., etc.
 	 * Note that you can use any percentage between 1 and 100.
 	 *
 	 * For Portrait images:
@@ -959,7 +1351,7 @@ class GD extends PHPThumb
 			$crop_height,
 			$crop_width,
 			$crop_height
-		);
+			);
 
 		// update all the variables and resources to be correct
 		$this->old_image					= $this->working_image;
@@ -972,7 +1364,7 @@ class GD extends PHPThumb
 	/**
 	 * Adaptively Resizes the Image and Crops Using a Quadrant
 	 *
-	 * This function attempts to get the image to as close to the provided dimensions as possible, and then crops the
+	 * This function attempts to get the image to be as close to the provided dimensions as possible, and then crops the
 	 * remaining overflow using the quadrant to get the image to be the size specified.
 	 *
 	 * The quadrants available are Top, Bottom, Center, Left, and Right:
@@ -989,7 +1381,7 @@ class GD extends PHPThumb
 	 * Note that if your image is Landscape and you choose either of the Top or Bottom quadrants (which won't
 	 * make sense since only the Left and Right would be available, then the Center quadrant will be used
 	 * to crop. This would have exactly the same result as using adaptiveResize().
-	 * The same goes if your image is portrait and you choose either the Left or Right quadrants.
+	 * The same goes if you are portrait and you choose either the Left or Right quadrants.
 	 */
 	public function adaptiveResizeQuadrant(int $width, int $height, string $quadrant = 'C'): GD
 	{
@@ -1058,7 +1450,7 @@ class GD extends PHPThumb
 			$crop_height,
 			$crop_width,
 			$crop_height
-		);
+			);
 
 		// update all the variables and resources to be correct
 		$this->old_image					= $this->working_image;
@@ -1152,7 +1544,7 @@ class GD extends PHPThumb
 			$crop_height,
 			$crop_width,
 			$crop_height
-		);
+			);
 
 		$this->old_image					= $this->working_image;
 		$this->current_dimensions['width']	= $crop_width;
@@ -2152,9 +2544,9 @@ class GD extends PHPThumb
 		$suffix = strtolower($this->format);
 
 		$is_compatible =
-			   function_exists('image' . $suffix)
-			&& function_exists('imagecreatefrom' . $suffix)
-			&& $is_compatible;
+		function_exists('image' . $suffix)
+		&& function_exists('imagecreatefrom' . $suffix)
+		&& $is_compatible;
 
 		if (!$is_compatible)
 		{
@@ -2181,7 +2573,7 @@ class GD extends PHPThumb
 				$this->options['alphaMaskColor'][1],
 				$this->options['alphaMaskColor'][2],
 				0
-			);
+				);
 
 			imagefill		($this->working_image, 0, 0, $color_transparent);
 			imagesavealpha	($this->working_image, true);
@@ -2195,7 +2587,7 @@ class GD extends PHPThumb
 				$this->options['transparencyMaskColor'][0],
 				$this->options['transparencyMaskColor'][1],
 				$this->options['transparencyMaskColor'][2]
-			);
+				);
 
 			imagecolortransparent	($this->working_image, $color_transparent);
 			imagetruecolortopalette	($this->working_image, true, 256);

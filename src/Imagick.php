@@ -303,33 +303,35 @@ class Imagick extends PHPThumb
 	}
 
 	/**
-	 * Renders $text onto the image.
+	 * Renders $text onto the image using ImagickDraw.
 	 *
-	 * Position keywords are identical to the GD backend — see the
-	 * documentation on GD::text() for the full list of accepted values.
+	 * Position keywords — same 9-grid + aliases as the GD backend.
 	 *
-	 * Options:
+	 * Options — same as the GD backend, with the following Imagick-specific notes:
 	 *
-	 *  - size      (int)   Font size in pixels (default: $this->options['textDefaultSize'])
-	 *  - color     (string|array)  Hex string or [r, g, b] (default: '#FFFFFF')
-	 *  - font      (string|null)   TTF file path OR font family name (resolved via fontconfig).
-	 *                             null → system default (resolved via fontconfig).
-	 *  - angle     (float) Rotation in degrees (default: 0)
-	 *  - offsetX   (int)   Horizontal padding from anchor (default: 10)
-	 *  - offsetY   (int)   Vertical padding from anchor (default: 10)
-	 *  - align     (string) 'left' | 'center' | 'right' (default: 'center')
-	 *  - alpha     (int)   Text opacity 0..100 (default: 100)
-	 *  - shadow    (array)  ['enabled' => bool, 'color', 'offsetX', 'offsetY', 'blur']
-	 *  - stroke    (array)  ['enabled' => bool, 'color', 'width']
-	 *  - background(array)  ['enabled' => bool, 'color', 'padding', 'alpha']
+	 *  - font     accepts both TTF paths and Imagick registered font names
+	 *             ('Courier', 'Helvetica', 'Times', etc.). Built-in fonts
+	 *             cannot be stroked reliably — pass a TTF if you need stroke.
+	 *  - size     is in pixels (matches Imagick's setFontSize() semantics).
+	 *
+	 * Rotation: GD's imagettftext rotates CCW for positive angles. Imagick's
+	 * annotateImage rotates CW for positive angles. To preserve GD-compatible
+	 * behavior (the documented meaning of the `angle` option), the angle is
+	 * negated before passing to annotateImage().
+	 *
+	 * Draw order, per line:
+	 *   1. Background pill (drawn once around the block)
+	 *   2. Shadow    (separate annotateImage with shadow ImagickDraw)
+	 *   3. Stroke    (separate annotateImage with transparent-fill, stroke-only draw)
+	 *   4. Main text (final annotateImage with main ImagickDraw)
 	 *
 	 * @param string $text     The text to render. Multi-line via "\n" supported.
-	 * @param string $position Anchor keyword.
-	 * @param array  $options  See above.
+	 * @param string $position Anchor keyword (see GD::text() docs).
+	 * @param array  $options  See GD::text() docs.
 	 * @return $this
 	 *
 	 * @throws InvalidArgumentException For unknown position strings or bad colors.
-	 * @throws RuntimeException If no usable font can be located on the system.
+	 * @throws RuntimeException If no usable font can be located or metrics fail.
 	 */
 	public function text(
 		string $text,
@@ -348,158 +350,281 @@ class Imagick extends PHPThumb
 			$current_width  = $this->current_dimensions['width'];
 			$current_height = $this->current_dimensions['height'];
 
-			// Resolve a usable TTF file path. We must always set a non-empty font
-			// on ImagickDraw, otherwise freetype chokes on the empty default.
 			$font_path = $this->resolveFont($cfg['font']);
 
-			// Measure the text using Imagick's font metrics.
+			// ----- Rotation parity fix -----
+			// GD: positive = CCW. Imagick: positive = CW. Negate so that
+			// 'angle' => -15 means 15° clockwise in BOTH backends.
+			$imagick_angle = -$cfg['angle'];
+
+			// ----- Multi-line setup -----
+			$lines     = explode("\n", $text);
+			$num_lines = count($lines);
+
 			$measure = new \ImagickDraw();
 			$measure->setFont($font_path);
 			$measure->setFontSize($cfg['size']);
 
+			// Per-line: width and rotated visual height (depend on which
+			// glyphs are in each line).
+			$line_widths            = [];
+			$line_visual_heights    = [];
+			$max_line_width         = 0;
+			$max_line_visual_height = 0;
+
+			foreach ($lines as $line)
+			{
+				try
+				{
+					$m = $this->old_image->queryFontMetrics($measure, $line);
+				}
+				catch (\ImagickException $e)
+				{
+					$measure->clear();
+					$measure->destroy();
+					throw new RuntimeException(
+						'Imagick: queryFontMetrics() failed for font "' . $font_path . '": ' . $e->getMessage(),
+						0, $e
+						);
+				}
+
+				$line_w = (int) ($m['textWidth'] ?? 0);
+				$line_widths[] = $line_w;
+				if ($line_w > $max_line_width)
+				{
+					$max_line_width = $line_w;
+				}
+
+				// textWidth/textHeight reflect the rotated bbox for
+				// non-zero angles (Imagick measures with the angle applied).
+				$line_visual_h = (int) ($m['textHeight'] ?? 0);
+				$line_visual_heights[] = $line_visual_h;
+				if ($line_visual_h > $max_line_visual_height)
+				{
+					$max_line_visual_height = $line_visual_h;
+				}
+			}
+
+			// ----- Font-level ascender + descender, ONCE, via probe -----
+			// queryFontMetrics() per-string under-reports the ascender/
+			// descender when the string doesn't contain tall caps or
+			// descender glyphs. Probe with a string that covers every
+			// glyph category to get the font's worst-case metrics.
 			try
 			{
-				$metrics = $this->old_image->queryFontMetrics($measure, $text);
+				$probe_metrics = $this->old_image->queryFontMetrics(
+					$measure,
+					'Hgjpqy0123456789'
+					);
 			}
 			catch (\ImagickException $e)
 			{
 				$measure->clear();
 				$measure->destroy();
 				throw new RuntimeException(
-					'Imagick: queryFontMetrics() failed for font "' . $font_path . '": ' . $e->getMessage(),
-					0,
-					$e
+					'Imagick: queryFontMetrics() failed for font probe: ' . $e->getMessage(),
+					0, $e
 					);
 			}
-
 			$measure->clear();
 			$measure->destroy();
 
-			if ($metrics === false || empty($metrics))
-			{
-				throw new RuntimeException('Imagick: queryFontMetrics() returned empty metrics');
-			}
+			$font_ascender  = (int) ($probe_metrics['ascender']  ?? 0);
+			$font_descender = (int) abs($probe_metrics['descender'] ?? 0);
 
-			$text_width  = (int) $metrics['textWidth'];
-			$text_height = (int) $metrics['textHeight'];
+			// ----- Line height -----
+			// Same formula as GD: max of (probe-based with 30% buffer +
+			// size*0.1 margin, size-based with multiplier), plus 2*stroke_w
+			// when stroke is enabled (each stroked line expands outward
+			// by stroke_w in all directions, stealing 2*stroke_w from
+			// the inter-line gap).
+			$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
+			? (float) $cfg['lineHeight']
+			: 1.3;
 
-			if (isset($metrics['descender']))
-			{
-				$text_height += (int) abs($metrics['descender']);
-			}
+			$stroke_padding = $cfg['stroke']['enabled']
+			? max(1, (int) $cfg['stroke']['width']) * 2
+			: 0;
 
-			[$x, $y] = $this->computeTextTopLeft(
-				$anchor, $cfg['offsetX'], $cfg['offsetY'],
-				$current_width, $current_height,
-				$text_width, $text_height
-			);
+			$buffered_font_height = (int) round(
+				($font_ascender + $font_descender) * 1.3 + $cfg['size'] * 0.1
+				) + $stroke_padding;
+				$size_based_height    = (int) round($cfg['size'] * $multiplier) + $stroke_padding;
+				$line_height          = max($buffered_font_height, $size_based_height);
 
-			$align_const = match (strtolower($cfg['align'])) {
-				'left'   => \Imagick::ALIGN_LEFT,
-				'right'  => \Imagick::ALIGN_RIGHT,
-				default  => \Imagick::ALIGN_CENTER,
-			};
+				// ----- Block dimensions -----
+				$block_width  = $max_line_width;
+				$block_height = $max_line_visual_height + max(0, ($num_lines - 1) * $line_height);
 
-			$draw = new \ImagickDraw();
-			$draw->setFont($font_path);
-			$draw->setFontSize($cfg['size']);
-			$draw->setTextAlignment($align_const);
-			$draw->setTextAntialias(true);
+				[$block_x, $block_y] = $this->computeTextTopLeft(
+					$anchor, $cfg['offsetX'], $cfg['offsetY'],
+					$current_width, $current_height,
+					$block_width, $block_height
+					);
 
-			$rgb = $this->parseColor($cfg['color']);
-			$draw->setFillColor(new \ImagickPixel(sprintf(
-				'rgba(%d, %d, %d, %f)',
-				$rgb['r'], $rgb['g'], $rgb['b'],
-				$cfg['alpha'] / 100
-				)));
+				// First-line baseline: block_y + font_ascender (font-level, not
+				// per-line, so it works for any input string).
+				$first_line_baseline = $block_y + $font_ascender;
 
-			if ($cfg['stroke']['enabled'])
-			{
-				$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
-				$draw->setStrokeColor(new \ImagickPixel(sprintf(
-					'rgba(%d, %d, %d, 1)',
-					$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b']
-					)));
-				$draw->setStrokeWidth(max(1, (int) $cfg['stroke']['width']));
-			}
-			else
-			{
-				$draw->setStrokeColor(new \ImagickPixel('transparent'));
-				$draw->setStrokeWidth(0);
-			}
+				// ----- Build the ImagickDraw instances (one per layer) -----
+				$build_draw = static function () use ($font_path, $cfg): \ImagickDraw {
+					$d = new \ImagickDraw();
+					$d->setFont($font_path);
+					$d->setFontSize($cfg['size']);
+					// Pin ALIGN_LEFT so (x, y) is always the top-left of the
+					// text bounding box, regardless of the user's align option.
+					// Per-line alignment ('left'/'center'/'right') is computed
+					// by the caller from $cfg['align'] — not via setTextAlignment.
+					$d->setTextAlignment(\Imagick::ALIGN_LEFT);
+					$d->setTextAntialias(true);
+					$d->setStrokeAntialias(true);
+					return $d;
+				};
 
-			if ($cfg['background']['enabled'])
-			{
-				$bg_rgb = $this->parseColor($cfg['background']['color']);
-				$padding = (int) ($cfg['background']['padding'] ?? 4);
-				$bg_alpha = max(0, min(100, (int) ($cfg['background']['alpha'] ?? 75))) / 100;
-
-				$pill_x = max(0, $x - $padding);
-				$pill_y = max(0, $y - $padding);
-				$pill_w = $text_width + 2 * $padding;
-				$pill_h = $text_height + 2 * $padding;
-
-				if ($pill_x + $pill_w > $current_width)
+				// Shadow draw: fill only, no stroke.
+				$shadow_draw = null;
+				if ($cfg['shadow']['enabled'])
 				{
-					$pill_w = max(0, $current_width - $pill_x);
-				}
-				if ($pill_y + $pill_h > $current_height)
-				{
-					$pill_h = max(0, $current_height - $pill_y);
+					$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
+					$shadow_draw = $build_draw();
+					$shadow_draw->setFillColor(new \ImagickPixel(sprintf(
+						'rgba(%d, %d, %d, 1)',
+						$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b']
+						)));
+					$shadow_draw->setStrokeColor(new \ImagickPixel('transparent'));
+					$shadow_draw->setStrokeWidth(0);
 				}
 
-				$bg_draw = new \ImagickDraw();
-				$bg_draw->setFillColor(new \ImagickPixel(sprintf(
+				// Stroke draw: transparent fill, stroke outline only.
+				// Done as a SEPARATE pass so we don't depend on Imagick's
+				// combined fill+stroke behavior (which is unreliable when
+				// fill alpha drops below 1.0 across some builds).
+				$stroke_draw = null;
+				if ($cfg['stroke']['enabled'])
+				{
+					$stroke_rgb = $this->parseColor($cfg['stroke']['color']);
+					$stroke_draw = $build_draw();
+					$stroke_draw->setFillColor(new \ImagickPixel('transparent'));
+					$stroke_draw->setStrokeColor(new \ImagickPixel(sprintf(
+						'rgba(%d, %d, %d, 1)',
+						$stroke_rgb['r'], $stroke_rgb['g'], $stroke_rgb['b']
+						)));
+					$stroke_draw->setStrokeWidth(max(1, (int) $cfg['stroke']['width']));
+				}
+
+				// Main draw: fill only, no stroke (stroke is its own pass).
+				$main_draw = $build_draw();
+				$rgb = $this->parseColor($cfg['color']);
+				$main_draw->setFillColor(new \ImagickPixel(sprintf(
 					'rgba(%d, %d, %d, %f)',
-					$bg_rgb['r'], $bg_rgb['g'], $bg_rgb['b'],
-					$bg_alpha
+					$rgb['r'], $rgb['g'], $rgb['b'],
+					$cfg['alpha'] / 100
 					)));
-				$bg_draw->rectangle($pill_x, $pill_y, $pill_x + $pill_w, $pill_y + $pill_h);
+				$main_draw->setStrokeColor(new \ImagickPixel('transparent'));
+				$main_draw->setStrokeWidth(0);
 
-				$this->old_image->drawImage($bg_draw);
-				$bg_draw->clear();
-				$bg_draw->destroy();
-			}
+				// ----- Background pill (drawn once around the block) -----
+				if ($cfg['background']['enabled'])
+				{
+					$bg_rgb = $this->parseColor($cfg['background']['color']);
+					$padding  = (int) ($cfg['background']['padding'] ?? 4);
+					$bg_alpha = max(0, min(100, (int) ($cfg['background']['alpha'] ?? 75))) / 100;
 
-			if ($cfg['shadow']['enabled'])
-			{
-				$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
-				$shadow_draw = new \ImagickDraw();
-				$shadow_draw->setFont($font_path);
-				$shadow_draw->setFontSize($cfg['size']);
-				$shadow_draw->setTextAlignment($align_const);
-				$shadow_draw->setTextAntialias(true);
-				$shadow_draw->setFillColor(new \ImagickPixel(sprintf(
-					'rgba(%d, %d, %d, 1)',
-					$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b']
-					)));
-				$shadow_draw->setStrokeColor(new \ImagickPixel('transparent'));
-				$shadow_draw->setStrokeWidth(0);
+					$pill_x = max(0, $block_x - $padding);
+					$pill_y = max(0, $block_y - $padding);
+					$pill_w = $block_width + 2 * $padding;
+					$pill_h = $block_height + 2 * $padding;
 
-				$this->old_image->annotateImage(
-					$shadow_draw,
-					$x + $cfg['shadow']['offsetX'],
-					$y + $text_height + $cfg['shadow']['offsetY'],
-					$cfg['angle'],
-					$text
-				);
+					if ($pill_x + $pill_w > $current_width)
+					{
+						$pill_w = max(0, $current_width - $pill_x);
+					}
+					if ($pill_y + $pill_h > $current_height)
+					{
+						$pill_h = max(0, $current_height - $pill_y);
+					}
 
-				$shadow_draw->clear();
-				$shadow_draw->destroy();
-			}
+					$bg_draw = new \ImagickDraw();
+					$bg_draw->setFillColor(new \ImagickPixel(sprintf(
+						'rgba(%d, %d, %d, %f)',
+						$bg_rgb['r'], $bg_rgb['g'], $bg_rgb['b'],
+						$bg_alpha
+						)));
+					$bg_draw->rectangle($pill_x, $pill_y, $pill_x + $pill_w, $pill_y + $pill_h);
 
-			$this->old_image->annotateImage(
-				$draw,
-				$x,
-				$y + $text_height,
-				$cfg['angle'],
-				$text
-				);
+					$this->old_image->drawImage($bg_draw);
+					$bg_draw->clear();
+					$bg_draw->destroy();
+				}
 
-			$draw->clear();
-			$draw->destroy();
+				$align_normalized = strtolower($cfg['align']);
 
-			return $this;
+				// ----- Per-line rendering in shadow → stroke → main order -----
+				foreach ($lines as $i => $line)
+				{
+					if ($line === '')
+					{
+						continue;
+					}
+
+					$line_w = $line_widths[$i];
+					$line_x = match ($align_normalized) {
+						'left'  => $block_x,
+						'right' => $block_x + $block_width - $line_w,
+						default => (int) ($block_x + ($block_width - $line_w) / 2),
+					};
+
+					// baseline of line i = first-line baseline + i * line_height.
+					$baseline = $first_line_baseline + $i * $line_height;
+
+					// 1. Shadow.
+					if ($shadow_draw !== null)
+					{
+						$this->old_image->annotateImage(
+							$shadow_draw,
+							$line_x + $cfg['shadow']['offsetX'],
+							$baseline + $cfg['shadow']['offsetY'],
+							$imagick_angle,
+							$line
+						);
+					}
+
+					// 2. Stroke (transparent fill → outline only).
+					if ($stroke_draw !== null)
+					{
+						$this->old_image->annotateImage(
+							$stroke_draw,
+							$line_x,
+							$baseline,
+							$imagick_angle,
+							$line
+						);
+					}
+
+					// 3. Main.
+					$this->old_image->annotateImage(
+						$main_draw,
+						$line_x,
+						$baseline,
+						$imagick_angle,
+						$line
+					);
+				}
+
+				$main_draw->clear();
+				$main_draw->destroy();
+				if ($shadow_draw !== null)
+				{
+					$shadow_draw->clear();
+					$shadow_draw->destroy();
+				}
+				if ($stroke_draw !== null)
+				{
+					$stroke_draw->clear();
+					$stroke_draw->destroy();
+				}
+
+				return $this;
 	}
 
 	/**
@@ -541,8 +666,8 @@ class Imagick extends PHPThumb
 			}
 			// Non-existent path → don't throw, fall through to default.
 			return $this->resolveViaFontconfig('sans-serif')
-			?? $this->resolveViaImagickQuery()
-			?? $this->throwNoFontAvailable();
+				?? $this->resolveViaImagickQuery()
+				?? $this->throwNoFontAvailable();
 		}
 
 		// Step 3: treat as a family name; ask fontconfig.
@@ -664,6 +789,7 @@ class Imagick extends PHPThumb
 
 		$path = trim((string) @shell_exec('command -v fc-match 2>/dev/null'));
 		$available = ($path !== '');
+
 		return $available;
 	}
 
