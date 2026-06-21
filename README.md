@@ -63,19 +63,30 @@ All new methods are available on **both** backends. See the dedicated sections b
 
 ## Features
 
+### Core image operations
+
 - **Two interchangeable backends** — Use `PHPThumb\GD` (built on PHP's GD extension) or `PHPThumb\Imagick` (built on the PECL Imagick extension). Same API, switch with one `use` statement.
 - **Fluent chaining API** — Perform multiple manipulations on a single instance
 - **Flexible resizing** — By width, height, percentage, or adaptive (with crop)
 - **Crop operations** — From-center, quadrant-based, percentage-based, or vanilla x/y cropping
 - **Rotation** — 90° clockwise/counter-clockwise or arbitrary degrees
+- **Remote image support** — Load images from URLs as well as local files
+
+### Image correction & enhancement
+
 - **EXIF auto-orientation** — Correct phone-photo rotation based on embedded EXIF tags
-- **Text overlay / captioning** — Render text with font (auto-resolved via fontconfig on Linux/macOS), color, size, multi-line alignment (`align`), per-line spacing (`lineHeight`), shadow, stroke, and background pill
 - **Flip / mirror** — Horizontal, vertical, or both axes
-- **Sharpen / unsharp mask** — One-call image sharpening
+- **Sharpen** — One-call unsharp-mask sharpening
 - **Gamma correction** — Adjust output gamma to brighten or darken
+- **Filters** — Chainable wrappers (`grayscale`, `brightness`, `contrast`, `blur`, `pixelate`, `edgeDetect`, `emboss`, `smooth`) for the common cases, plus a low-level `imageFilter()` escape hatch for any backend-native filter constant.
+
+### Text & decoration
+
+- **Text overlay / captioning** — Render text with font (auto-resolved via fontconfig on Linux/macOS), color, size, multi-line alignment (`align`), per-line spacing (`lineHeight`), shadow, stroke, and background pill
 - **Border / frame** — Solid-color border around the image
-- **Advanced filter wrappers** — Grayscale, brightness, contrast, blur, pixelate, edge detect, emboss, smooth
-- **Image filters** — Grayscale, negate, brightness, blur, emboss, and more (via `imageFilter()`)
+
+### Extensibility & integration
+
 - **Plugin system** — Extend the library with custom manipulations (Reflection, Trim, Watermark included). Plugins transparently dispatch to the correct backend.
 - **Modern PHP 8.2+** — Strict types, enums where appropriate, modern syntax
 - **Composer-ready** — PSR-4 autoloading and Composer integration out of the box
@@ -504,7 +515,7 @@ $thumb->pixelate(8);
 // Dramatic edge-detected poster
 $thumb->edgeDetect()->contrast(-20);
 ```
-
+d
 For backend-specific magic (e.g. Imagick's `sepiaToneImage`, GD's `IMG_FILTER_MEAN_REMOVAL`), use `imageFilter()` directly with the native constant.
 
 ### Output
@@ -602,7 +613,7 @@ $thumb->save('scan-trimmed.png', 'PNG');
 ```
 
 #### `PHPThumb\Plugins\Reflection`
-Generates a classic glossy reflection effect.
+Generates a classic glossy reflection effect.d
 
 ```php
 $thumb = new PHPThumb\GD('logo.png', [], [
@@ -869,7 +880,7 @@ To run the Imagick variant, edit the `use` line at the top of the example (or pa
 
 Full documentation — including detailed guides, tutorials, and plugin recipes — is available on the project wiki:
 
-📚 **[https://github.com/PHPThumb/PHPThumb/wiki](https://github.com/PHPThumb/PHPThumb/wiki)**
+📚 **[Documentation](https://github.com/PHPThumb/PHPThumb/wiki)**
 
 💬 **[Discussions](https://github.com/PHPThumb/PHPThumb/discussions)** — Got questions, comments, or feedback? This is the place to visit.
 
@@ -877,7 +888,7 @@ Full documentation — including detailed guides, tutorials, and plugin recipes 
 
 ## Testing
 
-PHPThumb ships with a PHPUnit test suite under `tests/`. Tests are split by backend and feature area.
+PHPThumb ships with a [PHPUnit test suite](https://github.com/PHPThumb/PHPThumb/issues) under `tests/`. Tests are split by backend and feature area.
 
 ```bash
 composer install
@@ -891,34 +902,13 @@ Test fixtures live in `tests/resources/`.
 Run only the GD tests:
 
 ```bash
-vendor/bin/phpunit tests/PHPThumb/Tests/GDAutoOrientTest.php \
-                   tests/PHPThumb/Tests/GDBorderTest.php \
-                   tests/PHPThumb/Tests/GDFiltersTest.php \
-                   tests/PHPThumb/Tests/GDFlipTest.php \
-                   tests/PHPThumb/Tests/GDGammaTest.php \
-                   tests/PHPThumb/Tests/GDLoadTest.php \
-                   tests/PHPThumb/Tests/GDOptionsTest.php \
-                   tests/PHPThumb/Tests/GDTest.php \
-                   tests/PHPThumb/Tests/GDTextTest.php
+./vendor/bin/phpunit --testsuite=GD
 ```
 
 Run only the Imagick tests:
 
 ```bash
-vendor/bin/phpunit tests/PHPThumb/Tests/ImagickAutoOrientTest.php \
-                   tests/PHPThumb/Tests/ImagickBorderTest.php \
-                   tests/PHPThumb/Tests/ImagickFiltersTest.php \
-                   tests/PHPThumb/Tests/ImagickFlipTest.php \
-                   tests/PHPThumb/Tests/ImagickFormatCoverageTest.php \
-                   tests/PHPThumb/Tests/ImagickGammaTest.php \
-                   tests/PHPThumb/Tests/ImagickLoadTest.php \
-                   tests/PHPThumb/Tests/ImagickOperationsTest.php \
-                   tests/PHPThumb/Tests/ImagickOptionsTest.php \
-                   tests/PHPThumb/Tests/ImagickOutputTest.php \
-                   tests/PHPThumb/Tests/ImagickPluginTest.php \
-                   tests/PHPThumb/Tests/ImagickRemoteImageTest.php \
-                   tests/PHPThumb/Tests/ImagickTest.php \
-                   tests/PHPThumb/Tests/ImagickTextTest.php
+./vendor/bin/phpunit --testsuite=Imagick
 ```
 
 Imagick tests skip automatically if `ext-imagick` is not loaded.
