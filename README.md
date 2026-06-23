@@ -699,7 +699,7 @@ $thumb = new PHPThumb\GD('image.jpg', [
 
 ## Examples
 
-The `examples/` directory contains runnable demos for every feature. Every example is implemented with **both backends** — switch the `use` statement at the top of any example to swap between them.
+The `examples/` directory contains runnable demos for every feature. [Every example](https://github.com/PHPThumb/PHPThumb/wiki/Examples) is implemented with **both backends** — switch the `use` statement at the top of any example to swap between them.
 
 ```php
 // Basic resize
@@ -888,7 +888,7 @@ Full documentation — including detailed guides, tutorials, and plugin recipes 
 
 ## Testing
 
-PHPThumb ships with a [PHPUnit test suite](https://github.com/PHPThumb/PHPThumb/issues) under `tests/`. Tests are split by backend and feature area.
+PHPThumb ships with a [PHPUnit test suite](https://github.com/PHPThumb/PHPThumb/wiki/Tests) under `tests/`. Tests are split by backend and feature area.
 
 ```bash
 composer install
