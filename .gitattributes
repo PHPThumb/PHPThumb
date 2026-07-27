@@ -6,12 +6,11 @@
 *.ico binary
 
 # Directories
-/examples/ export-ignore
-/tests/    export-ignore
+/examples export-ignore
+/tests    export-ignore
 
 .editorconfig export-ignore
 .gitattributes export-ignore
 .gitignore export-ignore
 composer.lock export-ignore
 phpunit.xml export-ignore
-tests export-ignore
