@@ -3,9 +3,7 @@
  * Showcases every chainable filter wrapper in one run. Produces a single
  * preview that demonstrates grayscale, blur, pixelate, edge-detect, and
  * emboss chained together.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

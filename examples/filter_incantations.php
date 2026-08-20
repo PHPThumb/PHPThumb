@@ -2,9 +2,7 @@
 /**
  * Each filter wrapper demonstrated in isolation. Useful for picking the
  * right strength value before composing a pipeline.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

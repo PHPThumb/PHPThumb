@@ -2,9 +2,7 @@
 /**
  * Pad an image onto a colored canvas.
  *
- * @author Marcel Domke <contact@marcel-domke.de>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

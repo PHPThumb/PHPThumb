@@ -4,9 +4,7 @@
  *
  * The frame grows the canvas by 2 × thickness in both axes. The original
  * pixel data is preserved untouched in the center.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

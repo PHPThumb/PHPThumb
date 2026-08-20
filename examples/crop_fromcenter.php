@@ -1,10 +1,7 @@
 <?php
 /**
  * Crop a rectangular region centered on the image.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

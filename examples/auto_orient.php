@@ -7,9 +7,7 @@
  *  - the source has no EXIF block (PNG, GIF, WEBP, AVIF, most edited JPEGs)
  *  - the orientation tag is 1 (already normal)
  *  - ext-exif isn't loaded (GD only — Imagick handles EXIF natively)
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

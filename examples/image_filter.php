@@ -17,9 +17,7 @@
  *
  * See the wiki "Imagick API" page for the full IMG_FILTER_* → Imagick mapping.
  *
- * @author Marcel Domke <contact@marcel-domke.de>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

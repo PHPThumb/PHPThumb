@@ -6,9 +6,7 @@
  * automatically resolves a usable TTF font via 'fc-match' — no need to
  * pass 'font' explicitly. On systems without fontconfig, this falls
  * back to the built-in font (which ignores size).
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once __DIR__ . '/../vendor/autoload.php';
 

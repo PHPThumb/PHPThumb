@@ -1,9 +1,7 @@
 <?php
 /**
  * Mirror an image horizontally (left ↔ right).
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

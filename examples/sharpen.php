@@ -1,9 +1,7 @@
 <?php
 /**
  * Resize an image and apply sharpening — a typical thumbnail pipeline.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

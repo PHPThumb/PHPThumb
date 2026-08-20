@@ -6,9 +6,7 @@
  * 'align' => 'right' right-aligns both lines within the text block.
  * 'lineHeight' => 1.4 gives ~40% visual gap between lines (default is
  * 1.3 on Imagick, 1.5 on GD — set explicitly for cross-backend parity).
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once __DIR__ . '/../vendor/autoload.php';
 

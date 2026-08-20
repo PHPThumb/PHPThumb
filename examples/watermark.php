@@ -6,12 +6,7 @@
  // The fluent return value of resizePercent() is itself a valid instance,
  // which is why this passes it in directly.
  *
- * Note: the watermark source must be the same backend as the base image.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @author Oleg Sherbakov <holdmann@yandex.ru>
- * @license MIT — see LICENSE in the repo root.
- */
+ * Note: the watermark source must be the same backend as the base image.*/
 
 require_once '../vendor/autoload.php';
 

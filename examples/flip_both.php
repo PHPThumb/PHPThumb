@@ -1,9 +1,7 @@
 <?php
 /**
  * Mirror on both axes (equivalent to a 180° rotation, but cheaper).
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

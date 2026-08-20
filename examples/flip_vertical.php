@@ -3,9 +3,7 @@
  * Mirror an image vertically (top ↔ bottom).
  *
  * Useful for inverting upside-down scans or photos.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

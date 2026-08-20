@@ -1,11 +1,6 @@
 <?php
 /**
- * Trim solid-color borders from an image.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @author Oleg Sherbakov <holdmann@yandex.ru>
- * @license MIT — see LICENSE in the repo root.
- */
+ * Trim solid-color borders from an image.*/
 
 require_once '../vendor/autoload.php';
 

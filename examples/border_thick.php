@@ -1,9 +1,7 @@
 <?php
 /**
  * A polaroid-style thick white border, common in photo galleries.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

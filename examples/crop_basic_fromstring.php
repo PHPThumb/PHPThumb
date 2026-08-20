@@ -12,10 +12,7 @@
  *     $thumb = new PHPThumb\Imagick($tmp);
  *     // ... do work ...
  *     @unlink($tmp);
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

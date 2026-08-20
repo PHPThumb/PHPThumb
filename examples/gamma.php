@@ -4,9 +4,7 @@
  *
  * gamma(1.5) lifts midtones without clipping highlights as harshly
  * as a flat brightness boost.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

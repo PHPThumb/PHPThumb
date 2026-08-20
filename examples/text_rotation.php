@@ -5,9 +5,7 @@
  * 'angle' => -15 produces 15° clockwise rotation on BOTH GD and
  * Imagick (the backends use opposite native conventions — Imagick
  * negates the angle internally so users see consistent behavior).
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once __DIR__ . '/../vendor/autoload.php';
 

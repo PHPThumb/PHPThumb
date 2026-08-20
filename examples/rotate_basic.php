@@ -1,10 +1,7 @@
 <?php
 /**
  * Rotate an image 90° clockwise or counter-clockwise.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

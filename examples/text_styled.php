@@ -14,9 +14,7 @@
  * If fontconfig is unavailable AND no system font can be found, GD
  * falls back to the built-in font, which ignores size, angle, shadow,
  * and stroke — yielding a small, unrotated, unstyled caption.
- *
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once __DIR__ . '/../vendor/autoload.php';
 

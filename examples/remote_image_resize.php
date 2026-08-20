@@ -6,10 +6,7 @@
  * must be enabled in php.ini. Use raw.githubusercontent.com (not
  * github.com/<repo>/blob/…) for direct asset access — the latter returns
  * an HTML page.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

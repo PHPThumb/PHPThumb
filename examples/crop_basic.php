@@ -1,10 +1,7 @@
 <?php
 /**
  * Crop an image from explicit x/y/width/height coordinates.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

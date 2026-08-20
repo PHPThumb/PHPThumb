@@ -1,10 +1,7 @@
 <?php
 /**
  * Best-fit resize into a fixed box.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

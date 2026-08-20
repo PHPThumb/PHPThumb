@@ -5,10 +5,7 @@
  * Note: on the GD backend, imagerotate() fills new corner areas with black,
  // producing visible triangular artifacts. The Imagick backend handles this
  // cleanly via Imagick::rotateImage() with an explicit fill color.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

@@ -6,10 +6,7 @@
  * Valid formats on GD: AVIF, GIF, JPEG (or JPG), PNG, WEBP.
  * Valid formats on Imagick: those plus BMP, HEIC, TIFF, and any format your
  * local ImageMagick build supports.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 

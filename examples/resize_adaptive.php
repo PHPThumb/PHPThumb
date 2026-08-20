@@ -1,10 +1,7 @@
 <?php
 /**
  * Adaptive resize: cover a target box, then crop the overflow from the center.
- *
- * @author Ian Selby <ianrselby@gmail.com>
- * @license MIT — see LICENSE in the repo root.
- */
+*/
 
 require_once '../vendor/autoload.php';
 
