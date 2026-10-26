@@ -499,7 +499,7 @@ Convenience wrappers around the platform-native `imageFilter()` — all availabl
 | `grayscale(): self` | `IMG_FILTER_GRAYSCALE` | `setImageColorspace(GRAY)` |
 | `brightness(int $level): self` | `IMG_FILTER_BRIGHTNESS` | `modulateImage(100+$level, 100, 100)` |
 | `contrast(int $level): self` | `IMG_FILTER_CONTRAST` | `contrastImage($level)` |
-| `blur(int|float $amount = 1): self` | `IMG_FILTER_GAUSSIAN_BLUR` | `gaussianBlurImage(0, $amount)` |
+| `blur(int\|float $amount = 1): self` | `IMG_FILTER_GAUSSIAN_BLUR` | `gaussianBlurImage(0, $amount)` |
 | `pixelate(int $blockSize = 10): self` | `IMG_FILTER_PIXELATE` | scale down + scale up |
 | `edgeDetect(): self` | `IMG_FILTER_EDGEDETECT` | `edgeImage(1)` |
 | `emboss(): self` | `IMG_FILTER_EMBOSS` | `embossImage(0, 1)` |
@@ -515,7 +515,6 @@ $thumb->pixelate(8);
 // Dramatic edge-detected poster
 $thumb->edgeDetect()->contrast(-20);
 ```
-d
 For backend-specific magic (e.g. Imagick's `sepiaToneImage`, GD's `IMG_FILTER_MEAN_REMOVAL`), use `imageFilter()` directly with the native constant.
 
 ### Output
