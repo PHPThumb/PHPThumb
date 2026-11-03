@@ -192,7 +192,13 @@ class Watermark implements PluginInterface
 			);
 
 		$base_image = $phpthumb->getOldImage();
-		$watermark  = clone $this->wm->getOldImage();
+		$watermark_source = $this->wm->getOldImage();
+
+		if ($base_image === null || $watermark_source === null) {
+			throw new \RuntimeException('Image is not initialized');
+		}
+
+		$watermark = clone $watermark_source;
 
 		if ($base_image === null || $watermark === null) {
 			throw new \RuntimeException('Image is not initialized');

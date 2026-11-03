@@ -28,16 +28,16 @@ class Imagick extends PHPThumb
 	/**
 	 * The prior image (before manipulation)
 	 *
-	 * @var \Imagick
+	 * @var \Imagick|null
 	 */
-	protected $old_image;
+	protected ?\Imagick $old_image = null;
 
 	/**
 	 * The working image (used during manipulation)
 	 *
-	 * @var \Imagick
+	 * @var \Imagick|null
 	 */
-	protected $working_image;
+	protected ?\Imagick $working_image = null;
 
 	/**
 	 * The current dimensions of the image
@@ -84,19 +84,32 @@ class Imagick extends PHPThumb
 
 		parent::__construct($file_name, $options, $plugins);
 
-		$this->determineFormat();
-		$this->verifyFormatCompatibility();
-
 		$this->old_image = new \Imagick();
 
-		if ($this->remote_image)
+		try
 		{
+			// Local files and remote URLs are both read through Imagick (it
+			// uses its own delegates for network protocols). The image is
+			// loaded up-front because Imagick is the only component that
+			// knows which format it just decoded - getimagesize()/finfo
+			// only recognise a fraction of the supported formats.
 			$this->old_image->readImage($this->file_name);
 		}
-		else
+		catch (\ImagickException $e)
 		{
-			$this->old_image->readImage($this->file_name);
+			$this->old_image->clear();
+			$this->old_image->destroy();
+			$this->old_image = null;
+
+			throw new Exception(
+				'Could not read image: ' . $this->file_name . ' (' . $e->getMessage() . ')',
+				0,
+				$e
+				);
 		}
+
+		$this->determineFormat();
+		$this->verifyFormatCompatibility();
 
 		$this->current_dimensions = [
 			'width'		=> $this->old_image->getImageWidth(),
@@ -109,16 +122,27 @@ class Imagick extends PHPThumb
 	 */
 	public function __destruct()
 	{
-		if ($this->old_image instanceof \Imagick)
-		{
-			$this->old_image->clear();
-			$this->old_image->destroy();
-		}
+		// $old_image and $working_image may point at the same object (see
+		// pad()), so de-duplicate before clearing/destroying.
+		$destroyed = [];
 
-		if ($this->working_image instanceof \Imagick)
+		foreach (['old_image', 'working_image'] as $property)
 		{
-			$this->working_image->clear();
-			$this->working_image->destroy();
+			$image = $this->{$property};
+
+			if ($image instanceof \Imagick)
+			{
+				$id = spl_object_id($image);
+
+				if (!isset($destroyed[$id]))
+				{
+					$destroyed[$id] = true;
+					$image->clear();
+					$image->destroy();
+				}
+			}
+
+			$this->{$property} = null;
 		}
 	}
 
@@ -139,7 +163,9 @@ class Imagick extends PHPThumb
 		$this->working_image->newImage($width, $height, $pixel);
 		$pixel->destroy();
 
-		$this->working_image->setFormat($this->old_image->getFormat());
+		// Keep the format of the source image (getImageFormat()/setImageFormat()
+		// are the explicit spellings of the getFormat()/setFormat() aliases).
+		$this->working_image->setImageFormat($this->old_image->getImageFormat());
 
 		$x = intval(($width - $this->current_dimensions['width']) / 2);
 		$y = intval(($height - $this->current_dimensions['height']) / 2);
@@ -154,6 +180,7 @@ class Imagick extends PHPThumb
 		$this->old_image->clear();
 		$this->old_image->destroy();
 		$this->old_image = $this->working_image;
+		$this->working_image = null;   // same object - do not destroy twice
 
 		$this->current_dimensions['width']  = $width;
 		$this->current_dimensions['height'] = $height;
@@ -972,6 +999,7 @@ class Imagick extends PHPThumb
 			$this->new_dimensions['new_height'],
 			false
 			);
+		$this->resetImagePage();
 
 		$this->current_dimensions['width']  = $this->new_dimensions['new_width'];
 		$this->current_dimensions['height'] = $this->new_dimensions['new_height'];
@@ -1024,6 +1052,7 @@ class Imagick extends PHPThumb
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
+		$this->resetImagePage();
 
 		$this->current_dimensions['width']  = $crop_width;
 		$this->current_dimensions['height'] = $crop_height;
@@ -1082,6 +1111,7 @@ class Imagick extends PHPThumb
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
+		$this->resetImagePage();
 
 		$this->current_dimensions['width']  = $crop_width;
 		$this->current_dimensions['height'] = $crop_height;
@@ -1137,6 +1167,7 @@ class Imagick extends PHPThumb
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
+		$this->resetImagePage();
 
 		$this->current_dimensions['width']  = $crop_width;
 		$this->current_dimensions['height'] = $crop_height;
@@ -1206,6 +1237,7 @@ class Imagick extends PHPThumb
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $start_x, $start_y);
+		$this->resetImagePage();
 
 		$this->current_dimensions['width']  = $crop_width;
 		$this->current_dimensions['height'] = $crop_height;
@@ -1236,6 +1268,7 @@ class Imagick extends PHPThumb
 		$background_color = new ImagickPixel('rgb(' . $this->options['alphaMaskColor'][0] . ', ' . $this->options['alphaMaskColor'][1] . ', ' . $this->options['alphaMaskColor'][2] . ')');
 
 		$this->old_image->rotateImage($background_color, $degrees);
+		$this->resetImagePage();
 
 		$background_color->destroy();
 
@@ -1597,16 +1630,10 @@ class Imagick extends PHPThumb
 			throw new RuntimeException('Cannot show image, headers have already been sent');
 		}
 
-		$format = strtolower($this->old_image->getImageFormat());
-		$mime_type = match ($format) {
-			'avif'  => 'image/avif',
-			'gif'   => 'image/gif',
-			'jpeg', 'jpg' => 'image/jpeg',
-			'png'   => 'image/png',
-			'webp'  => 'image/webp',
-			'bmp'   => 'image/bmp',
-			default => 'image/' . $format,
-		};
+		// Let Imagick name the format it is actually holding; the helper
+		// maps it to the correct mime type (including the aliases Imagick
+		// may report, e.g. "jpe" or "tif").
+		$mime_type = self::mimeTypeForFormat((string) $this->old_image->getImageFormat());
 
 		if ($raw_data === false)
 		{
@@ -1631,7 +1658,9 @@ class Imagick extends PHPThumb
 	 */
 	public function save(string $file_name, ?string $format = null): Imagick
 	{
-		$format = ($format !== null) ? strtoupper($format) : strtoupper($this->format);
+		$format = ($format !== null)
+			? self::normalizeFormatName($format)
+			: self::normalizeFormatName($this->format);
 
 		if (!is_writeable(dirname($file_name)))
 		{
@@ -1650,21 +1679,9 @@ class Imagick extends PHPThumb
 			}
 		}
 
-		$output_format = match ($format) {
-			'AVIF'  => 'AVIF',
-			'GIF'   => 'GIF',
-			'JPEG', 'JPG' => 'JPEG',
-			'PNG'   => 'PNG',
-			'WEBP'  => 'WEBP',
-			default => strtoupper($format),
-		};
-
-		$this->old_image->setFormat($output_format);
-		$this->old_image->setImageFormat($output_format);
-
-		$quality = match ($output_format) {
+		$quality = match ($format) {
 			'AVIF'      => $this->options['avifQuality'],
-			'JPEG', 'JPG' => $this->options['jpegQuality'],
+			'JPEG'      => $this->options['jpegQuality'],
 			'WEBP'      => $this->options['webpQuality'],
 			default     => null,
 		};
@@ -1673,6 +1690,12 @@ class Imagick extends PHPThumb
 		{
 			$this->old_image->setImageCompressionQuality($quality);
 		}
+
+		// Clear any leftover virtual canvas so the file is written at the
+		// origin rather than at the crop/rotate offset.
+		$this->resetImagePage();
+
+		$this->old_image->setImageFormat($format);
 
 		$this->old_image->writeImage($file_name);
 
@@ -1802,7 +1825,7 @@ class Imagick extends PHPThumb
 	/**
 	 * Returns $old_image.
 	 */
-	public function getOldImage(): \Imagick
+	public function getOldImage(): ?\Imagick
 	{
 		return $this->old_image;
 	}
@@ -1820,7 +1843,7 @@ class Imagick extends PHPThumb
 	/**
 	 * Returns $working_image.
 	 */
-	public function getWorkingImage(): \Imagick
+	public function getWorkingImage(): ?\Imagick
 	{
 		return $this->working_image;
 	}
@@ -1839,6 +1862,27 @@ class Imagick extends PHPThumb
 	#################################
 	# ----- UTILITY FUNCTIONS ----- #
 	#################################
+
+	/**
+	 * Resets the virtual canvas (page) of the working image.
+	 *
+	 * Imagick's crop/rotate/thumbnail operations keep the original virtual
+	 * canvas around. The leftover page offset makes the image appear shifted
+	 * when it is composited or written out, so it is cleared after every
+	 * geometry change.
+	 */
+	protected function resetImagePage(): void
+	{
+		if ($this->old_image instanceof \Imagick)
+		{
+			$this->old_image->setImagePage(
+				$this->old_image->getImageWidth(),
+				$this->old_image->getImageHeight(),
+				0,
+				0
+				);
+		}
+	}
 
 	/**
 	 * Calculates a new width and height for the image based on $this->max_width and the provided dimensions
@@ -1980,56 +2024,172 @@ class Imagick extends PHPThumb
 	}
 
 	/**
-	 * Determines the file format by mime-type
+	 * Determines the image format using Imagick itself.
+	 *
+	 * getimagesize() (and finfo_file()) only recognise a small subset of the
+	 * formats ImageMagick can decode - HEIC/HEIF, AVIF, TIFF, BMP, ICO, SVG
+	 * and friends are either unknown or misnamed. Imagick already knows
+	 * exactly which format it loaded, so we ask the image for its format and
+	 * only fall back to the mime type Imagick reports if the format string
+	 * is unusable.
+	 *
+	 * @throws Exception
 	 */
 	protected function determineFormat(): void
 	{
-		if ($this->remote_image)
+		if (!$this->old_image instanceof \Imagick)
 		{
-			$format_info = getimagesize($this->file_name);
-
-			if ($format_info === false)
-			{
-				throw new Exception('Could not determine format of remote image: ' . $this->file_name);
-			}
-
-			$mime_type = $format_info['mime'] ?? null;
-		}
-		else
-		{
-			$finfo = finfo_open(FILEINFO_MIME_TYPE);
-			$mime_type = finfo_file($finfo, $this->file_name);
+			throw new Exception(
+				'Could not determine format: the image has not been loaded.'
+				);
 		}
 
-		$this->format = match ($mime_type) {
-			'image/avif'   => 'AVIF',
-			'image/bmp'    => 'BMP',
-			'image/gif'    => 'GIF',
-			'image/heic'   => 'HEIC',
-			'image/jpeg'   => 'JPEG',
-			'image/png'    => 'PNG',
-			'image/tiff'   => 'TIFF',
-			'image/webp'   => 'WEBP',
-			default        => throw new Exception('Image format not supported: ' . $mime_type),
+		$format = strtoupper(trim((string) $this->old_image->getImageFormat()));
+
+		if ($format === '' || $format === 'UNKNOWN')
+		{
+			// Imagick could not name the format - ask for the mime type it
+			// detected for the image instead.
+			$mime_type = strtolower(trim((string) $this->old_image->getImageMimeType()));
+
+			$format = match ($mime_type) {
+				'image/avif'                    => 'AVIF',
+				'image/bmp', 'image/x-ms-bmp'    => 'BMP',
+				'image/gif'                     => 'GIF',
+				'image/heic'                    => 'HEIC',
+				'image/heif'                    => 'HEIF',
+				'image/jpeg'                    => 'JPEG',
+				'image/png'                     => 'PNG',
+				'image/tiff'                    => 'TIFF',
+				'image/webp'                    => 'WEBP',
+				'image/x-icon', 'image/vnd.microsoft.icon' => 'ICO',
+				'image/svg+xml'                 => 'SVG',
+				default => throw new Exception(
+					'Image format not supported: ' .
+					($mime_type !== '' ? $mime_type : 'unknown')
+					),
+			};
+		}
+
+		$this->format = self::normalizeFormatName($format);
+	}
+
+	/**
+	 * Normalises the format aliases Imagick may report into canonical names.
+	 *
+	 * Imagick is not consistent about the name it uses: a JPEG file may be
+	 * reported as "JPEG", "JPG" or "JPE", a TIFF as "TIFF" or "TIF", and so
+	 * on. Everything downstream (save(), the plugins, the mime headers) works
+	 * on the canonical name.
+	 */
+	protected static function normalizeFormatName(string $format): string
+	{
+		$format = strtoupper(trim($format));
+
+		return match ($format) {
+			'JPG', 'JPE', 'JPEG'  => 'JPEG',
+			'TIF', 'TIFF'         => 'TIFF',
+			'AVIF'                => 'AVIF',
+			'HEIC'                => 'HEIC',
+			'HEIF'                => 'HEIF',
+			'GIF'                 => 'GIF',
+			'PNG'                 => 'PNG',
+			'WEBP'                => 'WEBP',
+			'BMP', 'DIB'          => 'BMP',
+			'ICO', 'PICON'        => 'ICO',
+			'SVG', 'MSVG', 'SVGZ' => 'SVG',
+			'JP2', 'J2K', 'JPC'   => 'JP2',
+			'TGA'                 => 'TGA',
+			'PSD'                 => 'PSD',
+			default               => $format,
+		};
+	}
+
+	/**
+	 * Returns every format name that refers to the same codec.
+	 *
+	 * Used by verifyFormatCompatibility() so that a format reported under an
+	 * alias (JPG vs. JPEG, TIF vs. TIFF, …) is not mistaken for an
+	 * unsupported format.
+	 *
+	 * @return string[]
+	 */
+	protected static function formatAliases(string $format): array
+	{
+		$format = strtoupper($format);
+
+		return match ($format) {
+			'JPEG' => ['JPEG', 'JPG', 'JPE'],
+			'TIFF' => ['TIFF', 'TIF'],
+			'HEIC' => ['HEIC', 'HEIF'],
+			'HEIF' => ['HEIF', 'HEIC'],
+			'BMP'  => ['BMP', 'DIB'],
+			'ICO'  => ['ICO', 'PICON'],
+			'SVG'  => ['SVG', 'MSVG', 'SVGZ'],
+			'JP2'  => ['JP2', 'J2K', 'JPC'],
+			default => [$format],
+		};
+	}
+
+	/**
+	 * Returns the mime type for a format name.
+	 *
+	 * @param string $format Format name in any case (e.g. "JPEG", "jpg").
+	 */
+	protected static function mimeTypeForFormat(string $format): string
+	{
+		$format = strtolower(trim($format));
+
+		return match ($format) {
+			'avif'             => 'image/avif',
+			'bmp', 'dib'       => 'image/bmp',
+			'gif'              => 'image/gif',
+			'heic'             => 'image/heic',
+			'heif'             => 'image/heif',
+			'jpeg', 'jpg', 'jpe' => 'image/jpeg',
+			'png'              => 'image/png',
+			'tif', 'tiff'      => 'image/tiff',
+			'webp'             => 'image/webp',
+			'ico', 'picon'     => 'image/x-icon',
+			'svg', 'msvg', 'svgz' => 'image/svg+xml',
+			default            => 'image/' . ($format !== '' ? $format : 'octet-stream'),
 		};
 	}
 
 	/**
 	 * Makes sure the correct ImageMagick format is supported
+	 *
+	 * Uses Imagick's own format registry via the static queryFormats()
+	 * instead of spinning up a second Imagick instance just to ask the
+	 * question.
+	 *
+	 * @throws Exception
 	 */
 	protected function verifyFormatCompatibility(): void
 	{
-		$imagick = new \Imagick();
-
-		$formats = $imagick->queryFormats();
-
 		$format_to_check = strtoupper($this->format);
 
-		if (!in_array($format_to_check, $formats))
-		{
-			throw new Exception('Your ImageMagick installation does not support ' . $this->format . ' image types');
-		}
+		$formats = \Imagick::queryFormats();
 
-		$imagick->destroy();
+		$supported_formats = array_map('strtoupper', $formats);
+
+		if (!in_array($format_to_check, $supported_formats, true))
+		{
+			// Imagick may register a codec under an alias only (JPG vs. JPEG,
+			// TIF vs. TIFF, ...), so accept any known alias as a match.
+			$aliases = self::formatAliases($format_to_check);
+
+			foreach ($supported_formats as $format)
+			{
+				if (in_array($format, $aliases, true))
+				{
+					return;
+				}
+			}
+
+			throw new Exception(
+				'Your ImageMagick installation does not support ' . $this->format . ' image types'
+				);
+		}
 	}
 }
