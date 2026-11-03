@@ -1631,8 +1631,7 @@ class Imagick extends PHPThumb
 		}
 
 		// Let Imagick name the format it is actually holding; the helper
-		// maps it to the correct mime type (including the aliases Imagick
-		// may report, e.g. "jpe" or "tif").
+		// maps it to the correct mime type (including the aliases Imagick may report, e.g. "jpe" or "tif").
 		$mime_type = self::mimeTypeForFormat((string) $this->old_image->getImageFormat());
 
 		if ($raw_data === false)
@@ -2059,6 +2058,7 @@ class Imagick extends PHPThumb
 				'image/heic'                    => 'HEIC',
 				'image/heif'                    => 'HEIF',
 				'image/jpeg'                    => 'JPEG',
+				'image/jxl'                     => 'JXL',
 				'image/png'                     => 'PNG',
 				'image/tiff'                    => 'TIFF',
 				'image/webp'                    => 'WEBP',
@@ -2099,6 +2099,7 @@ class Imagick extends PHPThumb
 			'ICO', 'PICON'        => 'ICO',
 			'SVG', 'MSVG', 'SVGZ' => 'SVG',
 			'JP2', 'J2K', 'JPC'   => 'JP2',
+			'JXL', 'JPEGXL'       => 'JXL',
 			'TGA'                 => 'TGA',
 			'PSD'                 => 'PSD',
 			default               => $format,
@@ -2127,6 +2128,7 @@ class Imagick extends PHPThumb
 			'ICO'  => ['ICO', 'PICON'],
 			'SVG'  => ['SVG', 'MSVG', 'SVGZ'],
 			'JP2'  => ['JP2', 'J2K', 'JPC'],
+			'JXL'  => ['JXL', 'JPEGXL'],
 			default => [$format],
 		};
 	}
@@ -2147,6 +2149,7 @@ class Imagick extends PHPThumb
 			'heic'             => 'image/heic',
 			'heif'             => 'image/heif',
 			'jpeg', 'jpg', 'jpe' => 'image/jpeg',
+			'jxl'              => 'image/jxl',
 			'png'              => 'image/png',
 			'tif', 'tiff'      => 'image/tiff',
 			'webp'             => 'image/webp',
