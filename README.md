@@ -98,7 +98,7 @@ All new methods are available on **both** backends. See the dedicated sections b
 - **PHP 8.2** or higher
 - At least one of:
   - **GD** extension (>= 2.3.2)
-  - **Imagick** extension (>= 3.7.0; required for BMP, HEIC, TIFF, and other Imagick-only formats)
+  - **Imagick** extension (>= 3.7.0; required for BMP, HEIC, JXL, TIFF, and other Imagick-only formats)
 - **Composer** (recommended for installation)
 
 The library auto-detects format support at runtime — an exception is thrown if your environment cannot handle the loaded file.
@@ -181,7 +181,7 @@ Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ i
 | Concern | `PHPThumb\GD` | `PHPThumb\Imagick` |
 |---------|---------------|--------------------|
 | Default availability | Bundled with PHP since PHP 8 | Requires PECL extension |
-| Formats | JPEG, PNG, GIF, WebP, AVIF | JPEG, PNG, GIF, WebP, AVIF, **BMP, HEIC, TIFF** |
+| Formats | JPEG, PNG, GIF, WebP, AVIF | JPEG, PNG, GIF, WebP, AVIF, **BMP, HEIC, JXL, TIFF** |
 | Memory usage | Lower | Higher (full pixel buffer) |
 | Resize quality | Good (bicubic in modern GD) | Excellent (Lanczos / Catmull on Imagick 7) |
 | Rotation | Bicubic approximation | Pixel-accurate |
@@ -189,7 +189,7 @@ Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ i
 | Plugin output | Single-pass GD ops | Compositing with full alpha support |
 | Constructor return on plugin dispatch | `PHPThumb\GD` | `PHPThumb\Imagick` |
 
-**Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/TIFF support, higher-quality resampling, pixel-accurate rotation, or richer text rendering.
+**Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/JXL/TIFF support, higher-quality resampling, pixel-accurate rotation, or richer text rendering.
 
 You can mix backends within the same project — for example, use GD for JPEG thumbnails and Imagick for HEIC processing.
 
@@ -206,6 +206,7 @@ You can mix backends within the same project — for example, use GD for JPEG th
 | AVIF   | ✅ | ✅ |
 | BMP    | ❌ | ✅ |
 | HEIC   | ❌ | ✅ |
+| JXL    | ❌ | ✅ |
 | TIFF   | ❌ | ✅ |
 
 Format support is detected automatically; an exception is thrown if your environment can't handle the loaded file.
@@ -530,7 +531,7 @@ $thumb->save('output.jpg');         // Keep original format
 $thumb->save('output.png', 'PNG');  // Force conversion to PNG
 ```
 
-Valid `$format` values: `AVIF`, `GIF`, `JPEG`, `JPG`, `PNG`, `WEBP` (BMP/HEIC/TIFF on Imagick via `save($path, 'BMP')` etc.).
+Valid `$format` values: `AVIF`, `GIF`, `JPEG`, `JPG`, `PNG`, `WEBP` (BMP/HEIC/JXL/TIFF on Imagick via `save($path, 'BMP')` etc.).
 
 #### `getImageAsString(): string`
 Returns the raw image binary as a string — perfect for storage in databases or inline `<img>` data URIs.
@@ -918,7 +919,7 @@ Network-dependent tests (e.g. loading remote images from URLs) are gated behind 
 RUN_NETWORK_TESTS=1 vendor/bin/phpunit tests/PHPThumb/Tests/ImagickRemoteImageTest.php
 ```
 
-Format-coverage tests for BMP/HEIC/TIFF skip silently if the corresponding fixture file is absent.
+Format-coverage tests for BMP/HEIC/JXL/TIFF skip silently if the corresponding fixture file is absent.
 
 ---
 
