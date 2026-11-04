@@ -1681,6 +1681,7 @@ class Imagick extends PHPThumb
 		$quality = match ($format) {
 			'AVIF'      => $this->options['avifQuality'],
 			'JPEG'      => $this->options['jpegQuality'],
+			'JXL'       => $this->options['jxlQuality'],
 			'WEBP'      => $this->options['webpQuality'],
 			default     => null,
 		};
@@ -1716,6 +1717,7 @@ class Imagick extends PHPThumb
 				'resizeUp'              => false,
 				'avifQuality'           => 100,
 				'jpegQuality'           => 100,
+				'jxlQuality'            => 100,
 				'webpQuality'           => 100,
 				'correctPermissions'    => false,
 				'preserveAlpha'         => true,

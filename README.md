@@ -683,6 +683,7 @@ $thumb = new PHPThumb\GD('image.jpg', [
 |--------|------|---------|---------|-------------|
 | `resizeUp` | `bool` | `false` | GD & Imagick | Allow upscaling images that are smaller than the target size |
 | `jpegQuality` | `int` | `100` | GD & Imagick | JPEG output quality (0–100) |
+| `jxlQuality` | `int` | `100` | Imagick | JXL output quality (0–100) |
 | `webpQuality` | `int` | `100` | GD & Imagick | WebP output quality (0–100) |
 | `avifQuality` | `int` | `100` | GD & Imagick | AVIF output quality (0–100) |
 | `correctPermissions` | `bool` | `false` | GD & Imagick | Attempt to `chmod` the target directory if not writable |
