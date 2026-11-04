@@ -4,7 +4,7 @@
  *
  * The format argument is case-insensitive ('png' and 'PNG' both work).
  * Valid formats on GD: AVIF, GIF, JPEG (or JPG), PNG, WEBP.
- * Valid formats on Imagick: those plus BMP, HEIC, TIFF, and any format your
+ * Valid formats on Imagick: those plus BMP, HEIC, JXL, TIFF, and any format your
  * local ImageMagick build supports.
 */
 

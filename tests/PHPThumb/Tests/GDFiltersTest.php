@@ -297,6 +297,21 @@ class GDFiltersTest extends TestCase
 		self::assertSame($h, $this->thumb->getCurrentDimensions()['height']);
 	}
 
+	// ---------------- imageFilter() ----------------
+
+	public function testImageFilterNegateInvertsEveryChannel(): void
+	{
+		$before = imagecolorat($this->thumb->getOldImage(), 250, 187);
+
+		$this->thumb->imageFilter(IMG_FILTER_NEGATE);
+
+		$after = imagecolorat($this->thumb->getOldImage(), 250, 187);
+
+		self::assertSame(255 - (($before >> 16) & 0xFF), ($after >> 16) & 0xFF);
+		self::assertSame(255 - (($before >> 8) & 0xFF),  ($after >> 8) & 0xFF);
+		self::assertSame(255 - ($before & 0xFF),        $after & 0xFF);
+	}
+
 	// ---------------- chaining ----------------
 
 	public function testFiltersChainable(): void

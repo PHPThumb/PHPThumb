@@ -247,13 +247,20 @@ abstract class PHPThumb
 	public function setQualityPreset(string $preset): static
 	{
 		$this->setOptions($this->qualityPresetOptions($preset));
-		
+
 		return $this;
 	}
-	
+
 	/**
 	 * Expands a named quality preset into the per-format option values that
 	 * this backend actually understands.
+	 *
+	 * The preset matrix (self::QUALITY_PRESETS) is keyed by lowercase
+	 * format name ('jpeg', 'webp', 'avif', 'jxl'), while qualityOptionMap()
+	 * is keyed by the canonical format name ('JPEG', 'WEBP', 'AVIF', 'JXL').
+	 * The lookup below normalises the case so a backend can use either
+	 * spelling; without it every preset silently expands to an empty option
+	 * set and the encoder keeps its default quality.
 	 *
 	 * @param string $preset One of the keys in self::QUALITY_PRESETS.
 	 * @return array<string, int|null> option key => quality value
@@ -263,16 +270,18 @@ abstract class PHPThumb
 	protected function qualityPresetOptions(string $preset): array
 	{
 		$values = self::getQualityPreset($preset);
-		
+
 		$options = [];
 		foreach ($this->qualityOptionMap() as $format => $option_key)
 		{
-			if (array_key_exists($format, $values))
+			$key = strtolower(trim((string) $format));
+
+			if (array_key_exists($key, $values))
 			{
-				$options[$option_key] = $values[$format];
+				$options[$option_key] = $values[$key];
 			}
 		}
-		
+
 		return $options;
 	}
 
@@ -282,6 +291,10 @@ abstract class PHPThumb
 	 *
 	 * Backends override this to declare which formats they can actually
 	 * encode, so a preset never sets an option the backend ignores.
+	 *
+	 * The keys may be written in any case — qualityPresetOptions() lowercases
+	 * them before matching against the preset matrix — but the canonical
+	 * upper-case spelling ('JPEG', 'WEBP', 'AVIF', 'JXL') is preferred.
 	 *
 	 * @return array<string, string> canonical format name => option key
 	 */

@@ -1827,34 +1827,30 @@ class GD extends PHPThumb
 
 	/**
 	 * Applies a filter to the image
+	 *
+	 * $filter is one of PHP's IMG_FILTER_* constants. The optional
+	 * arguments are forwarded to imagefilter() unchanged; they are typed
+	 * int|float|bool so that numeric values survive PHP's coercive typing
+	 * (a plain bool would turn 2 into true).
 	 */
-	public function imageFilter(int $filter, bool $arg1 = false, bool $arg2 = false, bool $arg3 = false, bool $arg4 = false): GD
+	public function imageFilter(int $filter, int|float|bool $arg1 = false, int|float|bool $arg2 = false, int|float|bool $arg3 = false, int|float|bool $arg4 = false): GD
 	{
 		if (!function_exists('imagefilter'))
 		{
 			throw new RuntimeException('Your version of GD does not support image filters');
 		}
 
-		if ($arg1 === false)
+		$arguments = [];
+
+		foreach ([$arg1, $arg2, $arg3, $arg4] as $arg)
 		{
-			$result = imagefilter($this->old_image, $filter);
+			if ($arg !== false)
+			{
+				$arguments[] = $arg;
+			}
 		}
-		else if ($arg2 === false)
-		{
-			$result = imagefilter($this->old_image, $filter, $arg1);
-		}
-		else if ($arg3 === false)
-		{
-			$result = imagefilter($this->old_image, $filter, $arg1, $arg2);
-		}
-		else if ($arg4 === false)
-		{
-			$result = imagefilter($this->old_image, $filter, $arg1, $arg2, $arg3);
-		}
-		else
-		{
-			$result = imagefilter($this->old_image, $filter, $arg1, $arg2, $arg3, $arg4);
-		}
+
+		$result = imagefilter($this->old_image, $filter, ...$arguments);
 
 		if (!$result)
 		{

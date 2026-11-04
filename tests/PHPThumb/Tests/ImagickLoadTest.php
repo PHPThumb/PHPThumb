@@ -28,6 +28,7 @@ class ImagickLoadTest extends TestCase
 			'resizeUp'              => false,
 			'avifQuality'           => 100,
 			'jpegQuality'           => 100,
+			'jxlQuality'            => 90,
 			'webpQuality'           => 100,
 			'correctPermissions'    => false,
 			'preserveAlpha'         => true,

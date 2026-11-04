@@ -15,15 +15,20 @@
          displayDetailsOnAllIssues="true"
 >
     <testsuites>
-        <!-- Default full suite -->
-        <testsuite name="PHPThumb Test Suite">
-            <directory>./tests/PHPThumb/Tests/</directory>
+        <!-- Backend-agnostic: the abstract PHPThumb base class. -->
+        <testsuite name="Core">
+            <file>./tests/PHPThumb/Tests/PHPThumbTest.php</file>
+            <file>./tests/PHPThumb/Tests/QualityPresetTest.php</file>
         </testsuite>
 
         <!-- GD-only suite -->
         <testsuite name="GD">
             <file>./tests/PHPThumb/Tests/GDTest.php</file>
             <file>./tests/PHPThumb/Tests/GDLoadTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDOperationsTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDOutputTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDPluginTest.php</file>
+            <file>./tests/PHPThumb/Tests/GDQualityPresetTest.php</file>
 
             <!-- Advanced (split) -->
             <file>./tests/PHPThumb/Tests/GDOptionsTest.php</file>
@@ -44,6 +49,7 @@
             <file>./tests/PHPThumb/Tests/ImagickPluginTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickRemoteImageTest.php</file>
             <file>./tests/PHPThumb/Tests/ImagickFormatCoverageTest.php</file>
+            <file>./tests/PHPThumb/Tests/ImagickQualityPresetTest.php</file>
 
             <!-- Advanced (split) -->
             <file>./tests/PHPThumb/Tests/ImagickOptionsTest.php</file>

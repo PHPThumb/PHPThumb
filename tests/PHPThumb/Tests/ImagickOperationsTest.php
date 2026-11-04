@@ -25,11 +25,13 @@ class ImagickOperationsTest extends TestCase
 	{
 		$result = $this->thumb->resize($maxWidth, $maxHeight);
 
-		// assertEquals because Imagick::calcHeight() uses ceil() which
-		// returns float in PHP 8.0+; the actual value can be 267 or 267.0
-		// depending on the codepath.
-		self::assertEquals($expected['width'],  $this->thumb->getCurrentDimensions()['width']);
-		self::assertEquals($expected['height'], $this->thumb->getCurrentDimensions()['height']);
+		// calcHeight() uses ceil() (float in PHP 8.0+), and
+		// Imagick::thumbnailImage() rounds to even pixel boundaries on some
+		// builds (lib 6.x emits 74, lib 7.x emits 75 for a 500×375 → 100×100
+		// resize). The per-case delta keeps the assertion honest without
+		// pinning the test to one ImageMagick build.
+		self::assertEqualsWithDelta($expected['width'],  $this->thumb->getCurrentDimensions()['width'],  $expected['widthDelta']  ?? 0);
+		self::assertEqualsWithDelta($expected['height'], $this->thumb->getCurrentDimensions()['height'], $expected['heightDelta'] ?? 0);
 		self::assertInstanceOf(Imagick::class,	$result);
 	}
 
@@ -38,11 +40,7 @@ class ImagickOperationsTest extends TestCase
 		return [
 			'resize by width'  => [200, 0, ['width' => 200, 'height' => 150]],
 			'resize by height' => [0, 200, ['width' => 267, 'height' => 200]],
-			// Imagick::thumbnailImage rounds to even pixel boundaries on some
-			// builds (lib 6.x). For a 500×375 source → 100×100 target, the
-			// calc gives 100×75 but Imagick emits 100×74. The visual result
-			// is identical so we accept either via loose comparison.
-			'resize both'      => [100, 100, ['width' => 100, 'height' => 74]],
+			'resize both'      => [100, 100, ['width' => 100, 'height' => 74, 'heightDelta' => 1]],
 			'no resize'        => [0, 0, ['width' => 500, 'height' => 375]],
 		];
 	}
@@ -174,6 +172,19 @@ class ImagickOperationsTest extends TestCase
 
 		self::assertSame(600, $this->thumb->getCurrentDimensions()['width']);
 		self::assertSame(500, $this->thumb->getCurrentDimensions()['height']);
+	}
+
+	public function testPadFillsRemainingAreaWithColor(): void
+	{
+		$this->thumb->pad(600, 500, [0, 0, 0]);
+
+		$rgb = $this->thumb->getOldImage()
+			->getImagePixelColor(0, 0)
+			->getColor();
+
+		self::assertSame(0, (int) $rgb['r']);
+		self::assertSame(0, (int) $rgb['g']);
+		self::assertSame(0, (int) $rgb['b']);
 	}
 
 	public function testPadNoResize()

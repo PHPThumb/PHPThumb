@@ -26,6 +26,43 @@ use RuntimeException;
 class Imagick extends PHPThumb
 {
 	/**
+	 * Legacy spatial-filter identifiers.
+	 *
+	 * ext-imagick exposed these as Imagick::FILTER_* up to ext-imagick 3.4
+	 * (ImageMagick 6). ImageMagick 7 removed the underlying
+	 * MagickFilterImage() API entirely, so ext-imagick 3.5+ dropped both
+	 * the constants and Imagick::filter() itself.
+	 *
+	 * The values below are the historical ImageMagick 6 MagickFilterTypes
+	 * ids (magick/magick-type.h), so user code can migrate from
+	 * Imagick::FILTER_SOBEL to PHPThumb\Imagick::FILTER_SOBEL with a
+	 * one-line change and keep the same numeric semantics.
+	 *
+	 *   0 UndefinedFilter   7 LaplacianRobertsFilter
+	 *   1 PointFilter       8 OctagonFilter
+	 *   2 CellularFilter    9 PrewittFilter
+	 *   3 EdgeDetectFilter 10 RobertsFilter
+	 *   4 EmbossFilter     11 SobelFilter
+	 *   5 GaussianFilter   12 UnsharpFilter
+	 *   6 LaplacianFilter
+	 *
+	 * @see self::imageFilter()
+	 */
+	public const FILTER_UNDEFINED       = 0;
+	public const FILTER_POINT           = 1;
+	public const FILTER_CELLULAR        = 2;
+	public const FILTER_EDGEDETECT      = 3;
+	public const FILTER_EMBOSS          = 4;
+	public const FILTER_GAUSSIAN        = 5;
+	public const FILTER_LAPLACE         = 6;
+	public const FILTER_LAPLACE_ROBERTS = 7;
+	public const FILTER_OCTAGON         = 8;
+	public const FILTER_PREWITT         = 9;
+	public const FILTER_ROBERTS         = 10;
+	public const FILTER_SOBEL           = 11;
+	public const FILTER_UNSHARP         = 12;
+
+	/**
 	 * The prior image (before manipulation)
 	 *
 	 * @var \Imagick|null
@@ -1425,35 +1462,635 @@ class Imagick extends PHPThumb
 	}
 
 	/**
-	 * Applies a filter to the image
+	 * Applies a spatial filter to the image.
+	 *
+	 * This is a compatibility layer over the legacy ImageMagick 6
+	 * MagickFilterImage() filter family. ImageMagick 7 removed that API
+	 * (and ext-imagick 3.5+ therefore removed Imagick::filter() and the
+	 * Imagick::FILTER_* constants), so the filters are re-implemented here
+	 * on top of primitives that exist in *both* ImageMagick 6 and 7:
+	 *
+	 *   EDGEDETECT       → Imagick::edgeImage()
+	 *   EMBOSS           → Imagick::embossImage()
+	 *   GAUSSIAN         → Imagick::gaussianBlurImage()
+	 *   UNSHARP          → Imagick::sharpenImage()
+	 *   SOBEL           ┐
+	 *   PREWITT         │
+	 *   ROBERTS         ├→ Imagick::convolveImage() with a 3×3 kernel
+	 *   LAPLACE         │
+	 *   LAPLACE_ROBERTS │
+	 *   OCTAGON         ┘
+	 *   POINT           → no-op (IM6's PointFilter replaces each pixel
+	 *                     with itself)
+	 *
+	 * CELLULAR has no ImageMagick 7 equivalent and is rejected.
+	 *
+	 * The optional arguments are interpreted as radius and sigma for the
+	 * filters that take them (EDGEDETECT, EMBOSS, GAUSSIAN, UNSHARP) and
+	 * are ignored by the pure-convolution filters.
+	 *
+	 * @param int $filter One of the self::FILTER_* constants.
+	 * @return $this
+	 *
+	 * @throws InvalidArgumentException For an unknown filter id, or for a
+	 *                                  filter that cannot be emulated.
 	 */
-	public function imageFilter(int $filter, bool $arg1 = false, bool $arg2 = false, bool $arg3 = false, bool $arg4 = false): Imagick
+	public function imageFilter(int $filter, int|float|bool $arg1 = false, int|float|bool $arg2 = false, int|float|bool $arg3 = false, int|float|bool $arg4 = false): Imagick
 	{
-		$arguments = [];
+		// 'false' means "argument not supplied"; any other value — including
+		// 0 — is a real argument.
+		$radius = ($arg1 !== false) ? max(0.0, (float) $arg1) : 1.0;
+		$sigma  = ($arg2 !== false) ? max(0.0, (float) $arg2) : 1.0;
 
-		if ($arg1 !== false)
+		switch ($filter)
 		{
-			$arguments[] = $arg1;
-		}
+			case self::FILTER_POINT:
+				// IM6's PointFilter copies each pixel onto itself.
+				break;
 
-		if ($arg2 !== false)
-		{
-			$arguments[] = $arg2;
-		}
+			case self::FILTER_CELLULAR:
+				throw new InvalidArgumentException(
+					'The CELLULAR filter has no ImageMagick 7 equivalent and ' .
+					'cannot be emulated.'
+					);
 
-		if ($arg3 !== false)
-		{
-			$arguments[] = $arg3;
-		}
+			case self::FILTER_EDGEDETECT:
+				// edgeImage() takes an integer radius.
+				$this->old_image->edgeImage((int) round($radius));
+				break;
 
-		if ($arg4 !== false)
-		{
-			$arguments[] = $arg4;
-		}
+			case self::FILTER_EMBOSS:
+				// embossImage() rejects a zero sigma.
+				$this->old_image->embossImage((int) round($radius), max(0.1, $sigma));
+				break;
 
-		$this->old_image->filter($filter, ...$arguments);
+			case self::FILTER_GAUSSIAN:
+				$this->old_image->gaussianBlurImage($radius, $sigma);
+				break;
+
+			case self::FILTER_UNSHARP:
+				// sharpenImage() rejects a zero sigma.
+				$this->old_image->sharpenImage($radius, max(0.1, $sigma));
+				break;
+
+			case self::FILTER_LAPLACE:
+			case self::FILTER_LAPLACE_ROBERTS:
+			case self::FILTER_OCTAGON:
+			case self::FILTER_PREWITT:
+			case self::FILTER_ROBERTS:
+			case self::FILTER_SOBEL:
+				$this->applyConvolutionKernel(self::legacyFilterKernels()[$filter]);
+				break;
+
+			default:
+				throw new InvalidArgumentException(
+					'Unknown Imagick filter: ' . $filter . '. Expected one of the ' .
+					'FILTER_* constants (' . implode(', ', self::legacyFilterIds()) . ').'
+					);
+		}
 
 		return $this;
+	}
+
+	/**
+	 * Returns every filter id that imageFilter() can emulate.
+	 *
+	 * @return int[]
+	 */
+	public static function legacyFilterIds(): array
+	{
+		return [
+			self::FILTER_POINT,
+			self::FILTER_EDGEDETECT,
+			self::FILTER_EMBOSS,
+			self::FILTER_GAUSSIAN,
+			self::FILTER_LAPLACE,
+			self::FILTER_LAPLACE_ROBERTS,
+			self::FILTER_OCTAGON,
+			self::FILTER_PREWITT,
+			self::FILTER_ROBERTS,
+			self::FILTER_SOBEL,
+			self::FILTER_UNSHARP,
+		];
+	}
+
+	/**
+	 * The 3×3 convolution kernels used by the pure-convolution filters.
+	 *
+	 * These are the textbook equivalents of the kernels ImageMagick 6
+	 * hard-coded in MagickFilterImage(). The convolution is deliberately
+	 * unnormalised (scale 1, offset 0) so the output is the raw kernel
+	 * response — the standard definition of an edge-detection convolution.
+	 *
+	 * @return array<int, array<int, array<int, int>>>
+	 */
+	protected static function legacyFilterKernels(): array
+	{
+		return [
+			// 4-neighbour Laplacian.
+			self::FILTER_LAPLACE => [
+				[0, 1, 0],
+				[1, -4, 1],
+				[0, 1, 0],
+			],
+			// 8-neighbour Laplacian (Laplacian of Roberts).
+			self::FILTER_LAPLACE_ROBERTS => [
+				[1, -1, 1],
+				[-1, 8, -1],
+				[1, -1, 1],
+			],
+			// Roberts cross.
+			self::FILTER_ROBERTS => [
+				[1, 0, 0],
+				[0, -1, 0],
+				[0, 0, 0],
+			],
+			// Prewitt.
+			self::FILTER_PREWITT => [
+				[-1, 0, 1],
+				[-1, 0, 1],
+				[-1, 0, 1],
+			],
+			// Sobel.
+			self::FILTER_SOBEL => [
+				[-1, 0, 1],
+				[-2, 0, 2],
+				[-1, 0, 1],
+			],
+			// Octagon (a.k.a. "LoG"-style 8-neighbour Laplacian).
+			self::FILTER_OCTAGON => [
+				[0, -1, 0],
+				[-1, 8, -1],
+				[0, -1, 0],
+			],
+		];
+	}
+
+	/**
+	 * Applies a 3×3 convolution kernel to the working image.
+	 *
+	 * Imagick::convolveImage() is available in ext-imagick for both
+	 * ImageMagick 6 and 7, which makes it the portable replacement for the
+	 * removed MagickFilterImage() spatial filters. Its signature has
+	 * changed twice, though:
+	 *
+	 *   - ext-imagick ≤ 3.6 : convolveImage(array $matrix, int $scale[, int $offset])
+	 *   - ext-imagick ≥ 3.7 : convolveImage(ImagickKernel $kernel, int $channel = null)
+	 *
+	 * ext-imagick 3.7 re-typed the first parameter to ImagickKernel and
+	 * dropped the matrix overload; the scale/offset moved into
+	 * ImagickKernel::scale(). On some builds (ext-imagick 3.8.1 with
+	 * ImageMagick 7.1.2) a kernel constructed from a PHP matrix comes back
+	 * *empty* — getMatrix() and convolveImage() both throw "ImagickKernel
+	 * is empty, cannot be used" — so the native path is not always usable.
+	 *
+	 * The kernel is therefore applied in PHP when the native path is
+	 * unavailable. That path is deterministic and produces the same result
+	 * on every build, which is what the legacy IM6 filters did.
+	 *
+	 * @param array<int, array<int, float|int>> $kernel A square 2-D kernel.
+	 *
+	 * @throws RuntimeException If neither the native nor the PHP path works.
+	 */
+	protected function applyConvolutionKernel(array $kernel): void
+	{
+		$errors = [];
+
+		// ----- Native attempt: Imagick::convolveImage() ---------------------
+		if (method_exists(\Imagick::class, 'convolveImage'))
+		{
+			$variants = self::imagickKernelVariants($kernel);
+
+			if ($variants === [])
+			{
+				$errors[] = 'No ImagickKernel could be constructed from the filter matrix.';
+			}
+
+			// The second parameter is a channel mask (not a scale) on the
+			// modern binding, and absent on the older one — both shapes are
+			// attempted.
+			$shapes = [
+				'kernel'         => static function ($k) { return [$k]; },
+				'kernel,channel' => static function ($k) { return [$k, self::imagickChannelAll()]; },
+			];
+
+			foreach ($variants as $label => $kernel_object)
+			{
+				foreach ($shapes as $shape_label => $shape)
+				{
+					try
+					{
+						$this->old_image->convolveImage(...$shape($kernel_object));
+
+						return;
+					}
+					catch (\Throwable $e)
+					{
+						$errors[] = 'convolveImage(' . $label . ', ' . $shape_label . '): '
+							. get_class($e) . ': ' . $e->getMessage();
+					}
+				}
+			}
+		}
+		else
+		{
+			$errors[] = 'Imagick::convolveImage() is not available in this ext-imagick build.';
+		}
+
+		// ----- PHP fallback ---------------------------------------------------
+		try
+		{
+			$this->applyConvolutionKernelInPhp($kernel);
+
+			return;
+		}
+		catch (\Throwable $e)
+		{
+			$errors[] = 'PHP fallback: ' . get_class($e) . ': ' . $e->getMessage();
+		}
+
+		throw new RuntimeException(
+			'Could not apply the convolution filter. Attempts: ' . implode(' | ', $errors)
+			);
+	}
+
+	/**
+	 * Builds every ImagickKernel variant that can be constructed from a
+	 * filter matrix.
+	 *
+	 * ext-imagick 3.7+ accepts an ImagickKernel instead of a raw matrix.
+	 * The constructor cannot be introspected — ImagickKernel is an internal
+	 * class whose __construct is not registered in a way ReflectionMethod
+	 * can see — so the argument list is determined by trial.
+	 *
+	 * Note that a variant may construct successfully and still be *empty* on
+	 * some builds; that is detected by the caller, which reports the
+	 * failure and falls back to the PHP implementation.
+	 *
+	 * @param array<int, array<int, float|int>> $matrix
+	 *
+	 * @return array<string, \ImagickKernel>
+	 */
+	protected static function imagickKernelVariants(array $matrix): array
+	{
+		if (!class_exists(\ImagickKernel::class))
+		{
+			return [];
+		}
+
+		$candidates = [
+			'matrix,Convolution' => [$matrix, 'Convolution'],
+			'matrix,convolution' => [$matrix, 'convolution'],
+			'matrix,Correlation'  => [$matrix, 'Correlation'],
+			'matrix'              => [$matrix],
+			'floats,Convolution'  => [self::toFloatMatrix($matrix), 'Convolution'],
+		];
+
+		$variants = [];
+
+		foreach ($candidates as $label => $arguments)
+		{
+			try
+			{
+				$variants[$label] = new \ImagickKernel(...$arguments);
+			}
+			catch (\Throwable $e)
+			{
+				// This shape is not supported by the installed build.
+			}
+		}
+
+		return $variants;
+	}
+
+	/**
+	 * Converts every kernel weight to a float.
+	 *
+	 * @param array<int, array<int, float|int>> $matrix
+	 *
+	 * @return array<int, array<int, float>>
+	 */
+	protected static function toFloatMatrix(array $matrix): array
+	{
+		$converted = [];
+
+		foreach ($matrix as $row)
+		{
+			$converted_row = [];
+			foreach ($row as $value)
+			{
+				$converted_row[] = (float) $value;
+			}
+			$converted[] = $converted_row;
+		}
+
+		return $converted;
+	}
+
+	/**
+	 * Returns the "all channels" mask for the installed ext-imagick.
+	 */
+	protected static function imagickChannelAll(): int
+	{
+		if (defined('Imagick::CHANNEL_ALL'))
+		{
+			return (int) constant('Imagick::CHANNEL_ALL');
+		}
+
+		return 0x7fffffff;
+	}
+
+	/**
+	 * Applies a convolution kernel to the working image in pure PHP.
+	 *
+	 * This is the primary implementation on builds where the native
+	 * Imagick::convolveImage() cannot be used (see the class-level notes on
+	 * applyConvolutionKernel()).
+	 *
+	 * The frame is pulled into PHP once via exportImagePixels() and written
+	 * back via importImagePixels(), so the image geometry is unchanged and
+	 * the per-pixel cost is a single array lookup rather than an
+	 * Imagick::getImagePixelColor() call.
+	 *
+	 * @param array<int, array<int, float|int>> $kernel
+	 */
+	protected function applyConvolutionKernelInPhp(array $kernel): void
+	{
+		$width  = $this->old_image->getImageWidth();
+		$height = $this->old_image->getImageHeight();
+
+		if ($width < 1 || $height < 1)
+		{
+			return;
+		}
+
+		$frame = $this->exportFrame($width, $height);
+
+		if ($frame === null)
+		{
+			throw new RuntimeException(
+				'exportImagePixels() did not return a usable frame for a '
+				. $width . 'x' . $height . ' image.'
+				);
+		}
+
+		[$values, $channels, $map, $prefer_array] = $frame;
+
+		$kernel_size = count($kernel);
+		$half        = intdiv($kernel_size, 2);
+
+		$output = [];
+
+		for ($y = 0; $y < $height; $y++)
+		{
+			for ($x = 0; $x < $width; $x++)
+			{
+				$r = $g = $b = 0.0;
+
+				for ($ky = 0; $ky < $kernel_size; $ky++)
+				{
+					$sy = $y + $ky - $half;
+
+					if ($sy < 0 || $sy >= $height)
+					{
+						continue;
+					}
+
+					$row = $kernel[$ky];
+
+					for ($kx = 0; $kx < $kernel_size; $kx++)
+					{
+						$sx = $x + $kx - $half;
+
+						if ($sx < 0 || $sx >= $width)
+						{
+							continue;
+						}
+
+						$weight = (float) $row[$kx];
+
+						if ($weight === 0.0)
+						{
+							continue;
+						}
+
+						$index = (($sy * $width) + $sx) * $channels;
+
+						$r += $weight * (float) $values[$index];
+						$g += $weight * (float) $values[$index + 1];
+						$b += $weight * (float) $values[$index + 2];
+					}
+				}
+
+				$source_index = (($y * $width) + $x) * $channels;
+
+				$output[] = self::clampQuantum($r);
+				$output[] = self::clampQuantum($g);
+				$output[] = self::clampQuantum($b);
+
+				if ($channels === 4)
+				{
+					// The alpha channel is copied through untouched.
+					$output[] = (int) $values[$source_index + 3];
+				}
+			}
+		}
+
+		$this->importFrame($width, $height, $output, $channels, $map, $prefer_array);
+	}
+
+	/**
+	 * Reads the frame as a flat list of integer channel values.
+	 *
+	 * exportImagePixels() behaves differently between ext-imagick
+	 * generations: it may return a binary string or an array of integers,
+	 * and the number of values written per pixel depends on the channels
+	 * the image actually carries rather than on the requested map (an RGB
+	 * JPEG asked for an 'RGBA' map comes back with three values per
+	 * pixel). The channel count is therefore derived from the data itself.
+	 *
+	 * @return array{0: array<int, int>, 1: int, 2: string, 3: bool}|null
+	 *         [values, channels, import map, prefer array payload] — or null
+	 *         when no map produced a usable frame.
+	 */
+	protected function exportFrame(int $width, int $height): ?array
+	{
+		$pixel_count = $width * $height;
+
+		if ($pixel_count < 1)
+		{
+			return null;
+		}
+
+		foreach (['RGBA', 'RGB'] as $map)
+		{
+			try
+			{
+				$data = $this->old_image->exportImagePixels(
+					0,
+					0,
+					$width,
+					$height,
+					$map,
+					\Imagick::PIXEL_CHAR
+					);
+			}
+			catch (\Throwable $e)
+			{
+				continue;
+			}
+
+			if (is_string($data))
+			{
+				$values = unpack('C*', $data);
+				$values = ($values === false) ? [] : array_values($values);
+				$prefer_array = false;
+			}
+			elseif (is_array($data))
+			{
+				$values = array_values(array_map('intval', $data));
+				$prefer_array = true;
+			}
+			else
+			{
+				continue;
+			}
+
+			if ($values === [] || (count($values) % $pixel_count) !== 0)
+			{
+				continue;
+			}
+
+			$channels = intdiv(count($values), $pixel_count);
+
+			if (!in_array($channels, [3, 4], true))
+			{
+				continue;
+			}
+
+			// Some builds ignore the requested 8-bit pixel type and hand
+			// back 16-bit quantum values. Scale them down so the payload
+			// matches the 8-bit import.
+			$maximum = max($values);
+
+			if ($maximum > 255)
+			{
+				$scale = 255 / $maximum;
+				foreach ($values as $index => $value)
+				{
+					$values[$index] = (int) round($value * $scale);
+				}
+			}
+
+			// The import map is derived from the data, not from the map that
+			// was requested, so the two always agree.
+			$import_map = ($channels === 4) ? 'RGBA' : 'RGB';
+
+			return [$values, $channels, $import_map, $prefer_array];
+		}
+
+		return null;
+	}
+
+	/**
+	 * Writes the frame back into the working image.
+	 *
+	 * importImagePixels() takes seven arguments — x, y, width, height, map,
+	 * pixel type and the payload — and accepts the payload either as a
+	 * binary string or as an array of integers, depending on the build.
+	 *
+	 * @param array<int, int> $values
+	 */
+	protected function importFrame(
+		int $width,
+		int $height,
+		array $values,
+		int $channels,
+		string $map,
+		bool $prefer_array
+		): void
+	{
+		$payloads = [];
+
+		if ($prefer_array)
+		{
+			$payloads['array']  = $values;
+			$payloads['string'] = self::packValues($values);
+		}
+		else
+		{
+			$payloads['string'] = self::packValues($values);
+			$payloads['array']  = $values;
+		}
+
+		$errors = [];
+
+		foreach ($payloads as $label => $payload)
+		{
+			try
+			{
+				$result = $this->old_image->importImagePixels(
+					0,
+					0,
+					$width,
+					$height,
+					$map,
+					\Imagick::PIXEL_CHAR,
+					$payload
+					);
+
+				if ($result !== false)
+				{
+					return;
+				}
+
+				$errors[] = $label . ': importImagePixels() returned false';
+			}
+			catch (\Throwable $e)
+			{
+				$errors[] = $label . ': ' . get_class($e) . ': ' . $e->getMessage();
+			}
+		}
+
+		throw new RuntimeException(
+			'importImagePixels() failed for a ' . $width . 'x' . $height
+			. ' frame using the ' . $map . ' map: ' . implode(' | ', $errors)
+			);
+	}
+
+	/**
+	 * Packs a list of channel values into a binary string.
+	 *
+	 * @param array<int, int> $values
+	 */
+	protected static function packValues(array $values): string
+	{
+		$bytes = '';
+
+		foreach ($values as $value)
+		{
+			$bytes .= chr($value & 0xFF);
+		}
+
+		return $bytes;
+	}
+
+	/**
+	 * Clamps a computed channel value to the 0..255 range.
+	 */
+	protected static function clampQuantum(float $value): int
+	{
+		if ($value <= 0)
+		{
+			return 0;
+		}
+
+		if ($value >= 255)
+		{
+			return 255;
+		}
+
+		return (int) round($value);
 	}
 
 	/**
