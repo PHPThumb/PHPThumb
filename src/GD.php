@@ -390,374 +390,374 @@ class GD extends PHPThumb
 		string $position = 'bottom-right',
 		array $options = []
 		): GD
+	{
+		if ($text === '')
 		{
-			if ($text === '')
+			return $this; // no-op
+		}
+
+		$cfg = $this->resolveTextOptions($options);
+		$anchor = $this->resolveTextAnchor($position);
+
+		$current_width  = $this->current_dimensions['width'];
+		$current_height = $this->current_dimensions['height'];
+
+		// -----------------------------------------------------------------
+		// Font resolution. Mirrors Imagick::resolveFont() so the two
+		// backends accept the same font arguments and produce the same
+		// default behavior. The user-facing impact:
+		//
+		//   - null/empty font now resolves to fontconfig's sans-serif
+		//     instead of silently dropping to the GD built-in font.
+		//   - 'font' => 'DejaVu Sans' works (fontconfig family name),
+		//     not just literal paths.
+		//   - Bad paths still fall back, but with a loud E_USER_WARNING
+		//     so users stop wondering why their shadow option is ignored.
+		// -----------------------------------------------------------------
+		$ttf_path = $this->resolveGdFont($cfg['font']);
+
+		if ($ttf_path !== null && !function_exists('imagettftext'))
+		{
+			// We found a usable TTF, but the PHP build can't render it.
+			// Downgrade to the built-in font with a warning so the user
+			// knows to install ext-gd's FreeType support (most distros
+			// ship it; some slim builds disable it).
+			trigger_error(
+				'GD::text(): imagettftext() is not available in this PHP build; ' .
+				'falling back to built-in GD font. Built-in fonts ignore ' .
+				'size/angle/shadow/stroke options.',
+				E_USER_WARNING
+				);
+			$ttf_path = null;
+		}
+		// Note: the "bad font path" warning is now emitted inside
+		// resolveGdFont() itself, so it fires regardless of whether
+		// fontconfig or the path scan ultimately succeeds. No need
+		// to duplicate it here.
+
+		$use_ttf = $ttf_path !== null;
+
+		if ($use_ttf)
+		{
+			$lines     = explode("\n", $text);
+			$num_lines = count($lines);
+
+			$line_widths            = [];
+			$line_visual_heights    = [];
+			$max_line_width         = 0;
+			$max_line_visual_height = 0;
+
+			foreach ($lines as $line)
 			{
-				return $this; // no-op
-			}
-
-			$cfg = $this->resolveTextOptions($options);
-			$anchor = $this->resolveTextAnchor($position);
-
-			$current_width  = $this->current_dimensions['width'];
-			$current_height = $this->current_dimensions['height'];
-
-			// -----------------------------------------------------------------
-			// Font resolution. Mirrors Imagick::resolveFont() so the two
-			// backends accept the same font arguments and produce the same
-			// default behavior. The user-facing impact:
-			//
-			//   - null/empty font now resolves to fontconfig's sans-serif
-			//     instead of silently dropping to the GD built-in font.
-			//   - 'font' => 'DejaVu Sans' works (fontconfig family name),
-			//     not just literal paths.
-			//   - Bad paths still fall back, but with a loud E_USER_WARNING
-			//     so users stop wondering why their shadow option is ignored.
-			// -----------------------------------------------------------------
-			$ttf_path = $this->resolveGdFont($cfg['font']);
-
-			if ($ttf_path !== null && !function_exists('imagettftext'))
-			{
-				// We found a usable TTF, but the PHP build can't render it.
-				// Downgrade to the built-in font with a warning so the user
-				// knows to install ext-gd's FreeType support (most distros
-				// ship it; some slim builds disable it).
-				trigger_error(
-					'GD::text(): imagettftext() is not available in this PHP build; ' .
-					'falling back to built-in GD font. Built-in fonts ignore ' .
-					'size/angle/shadow/stroke options.',
-					E_USER_WARNING
-					);
-				$ttf_path = null;
-			}
-			// Note: the "bad font path" warning is now emitted inside
-			// resolveGdFont() itself, so it fires regardless of whether
-			// fontconfig or the path scan ultimately succeeds. No need
-			// to duplicate it here.
-
-			$use_ttf = $ttf_path !== null;
-
-			if ($use_ttf)
-			{
-				$lines     = explode("\n", $text);
-				$num_lines = count($lines);
-
-				$line_widths            = [];
-				$line_visual_heights    = [];
-				$max_line_width         = 0;
-				$max_line_visual_height = 0;
-
-				foreach ($lines as $line)
-				{
-					// ---- Width & visual height at the requested angle ----
-					$box = imagettfbbox($cfg['size'], $cfg['angle'], $ttf_path, $line);
-					if ($box === false)
-					{
-						throw new RuntimeException(
-							'GD imagettfbbox() failed for font: ' . $ttf_path
-							);
-					}
-
-					// imagettfbbox returns 4 corner pairs in CCW order:
-					// (lower-left, lower-right, upper-right, upper-left).
-					// Width is always xmax - xmin regardless of rotation angle.
-					$line_w = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
-					$line_widths[] = $line_w;
-					if ($line_w > $max_line_width)
-					{
-						$max_line_width = $line_w;
-					}
-
-					// Visual height = ymax - ymin of the rotated bbox.
-					$ys = [$box[1], $box[3], $box[5], $box[7]];
-					$line_visual_h = (int) (max($ys) - min($ys));
-					$line_visual_heights[] = $line_visual_h;
-					if ($line_visual_h > $max_line_visual_height)
-					{
-						$max_line_visual_height = $line_visual_h;
-					}
-				}
-
-				// ---- Font-level ascender + descender, ONCE, via probe string ----
-				// imagettfbbox() returns the bbox of only the glyphs IN the string,
-				// not the font's typographic metrics. A user-supplied "PHPThumb 2.5"
-				// (no descender glyphs) would under-report the descender; an
-				// all-lowercase string would under-report the ascender. Probing
-				// with a string that exercises every glyph category gives the
-				// font's worst-case ascender + descender regardless of input.
-				//
-				// y-coords: baseline at y=0, glyph tops NEGATIVE, descenders POSITIVE.
-				//   abs(min(box[5], box[7]))  → ascender (positive pixels)
-				//   max(box[1], box[3])        → descender (positive pixels)
-				$probe = 'Hgjpqy0123456789';
-				$probe_box = imagettfbbox($cfg['size'], 0, $ttf_path, $probe);
-				if ($probe_box === false)
+				// ---- Width & visual height at the requested angle ----
+				$box = imagettfbbox($cfg['size'], $cfg['angle'], $ttf_path, $line);
+				if ($box === false)
 				{
 					throw new RuntimeException(
-						'GD imagettfbbox() failed for font probe: ' . $ttf_path
+						'GD imagettfbbox() failed for font: ' . $ttf_path
 						);
 				}
-				$font_ascender  = (int) abs(min($probe_box[5], $probe_box[7]));
-				$font_descender = (int) max($probe_box[1], $probe_box[3]);
 
-				// ---- Line height ----
-				// Take the LARGER of:
-				//   (a) (font_ascender + font_descender) * 1.3  — the 30%
-				//       buffer accounts for anti-aliasing softening that
-				//       effectively widens rendered glyphs by 0.5-1 px on
-				//       each edge, eating into the inter-line gap.
-				//   (b) size * lineHeight                       — user-tunable
-				//       multiplier (default 1.3).
-				//
-				// Using max() guarantees no overlap regardless of which
-				// one is larger. Either bound is independently safe.
-				$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
-				? (float) $cfg['lineHeight']
-				: 1.3;
-
-				// When stroke is enabled, EACH stroked line expands by
-				// stroke_w in all directions: line 0's descender reaches
-				// stroke_w lower, line 1's ascender reaches stroke_w higher.
-				// Total gap stolen between lines = 2 × stroke_w.
-				// Adding 2 × stroke_w to line_height exactly cancels this,
-				// so stroked multi-line text has the same visual gap as
-				// un-stroked text.
-				$stroke_padding = $cfg['stroke']['enabled']
-				? max(1, (int) $cfg['stroke']['width']) * 2
-				: 0;
-
-				$buffered_font_height = (int) round(($font_ascender + $font_descender) * 1.3 + $cfg['size'] * 0.1) + $stroke_padding;
-				$size_based_height    = (int) round($cfg['size'] * $multiplier) + $stroke_padding;
-				$line_height          = max($buffered_font_height, $size_based_height);
-
-				// ---- Block dimensions ----
-				// Width: widest single line. Height: tallest single line's
-				// visual extent + (n-1) inter-line spacings. Using the
-				// per-line visual height (not size * n) ensures the block
-				// bbox reflects the actual inked extent, with the rest of
-				// the height coming from inter-line spacing.
-				$block_width  = $max_line_width;
-				$block_height = $max_line_visual_height + max(0, ($num_lines - 1) * $line_height);
-
-				[$block_x, $block_y] = $this->computeTextTopLeft(
-					$anchor, $cfg['offsetX'], $cfg['offsetY'],
-					$current_width, $current_height,
-					$block_width, $block_height
-					);
-
-				// First-line baseline uses the FONT-LEVEL ascender, not the
-				// per-line ascender. The font-level value (from the probe) is
-				// correct for any input string, even ones whose first line
-				// happens to contain no ascender glyphs (e.g. all-lowercase,
-				// starting with 'i' or 'l').
-				$first_line_baseline = $block_y + $font_ascender;
-
-				// ---- Background pill (drawn once around the block) ----
-				if ($cfg['background']['enabled'])
+				// imagettfbbox returns 4 corner pairs in CCW order:
+				// (lower-left, lower-right, upper-right, upper-left).
+				// Width is always xmax - xmin regardless of rotation angle.
+				$line_w = (int) (max($box[2], $box[4]) - min($box[0], $box[6]));
+				$line_widths[] = $line_w;
+				if ($line_w > $max_line_width)
 				{
-					$this->drawTextBackgroundGd(
-						$block_x, $block_y, $block_width, $block_height,
-						$cfg['background']
-						);
+					$max_line_width = $line_w;
 				}
 
-				// ---- Pre-allocate colors once ----
-				$main_rgb = $this->parseColor($cfg['color']);
-				$main_color = imagecolorallocatealpha(
+				// Visual height = ymax - ymin of the rotated bbox.
+				$ys = [$box[1], $box[3], $box[5], $box[7]];
+				$line_visual_h = (int) (max($ys) - min($ys));
+				$line_visual_heights[] = $line_visual_h;
+				if ($line_visual_h > $max_line_visual_height)
+				{
+					$max_line_visual_height = $line_visual_h;
+				}
+			}
+
+			// ---- Font-level ascender + descender, ONCE, via probe string ----
+			// imagettfbbox() returns the bbox of only the glyphs IN the string,
+			// not the font's typographic metrics. A user-supplied "PHPThumb 2.5"
+			// (no descender glyphs) would under-report the descender; an
+			// all-lowercase string would under-report the ascender. Probing
+			// with a string that exercises every glyph category gives the
+			// font's worst-case ascender + descender regardless of input.
+			//
+			// y-coords: baseline at y=0, glyph tops NEGATIVE, descenders POSITIVE.
+			//   abs(min(box[5], box[7]))  → ascender (positive pixels)
+			//   max(box[1], box[3])        → descender (positive pixels)
+			$probe = 'Hgjpqy0123456789';
+			$probe_box = imagettfbbox($cfg['size'], 0, $ttf_path, $probe);
+			if ($probe_box === false)
+			{
+				throw new RuntimeException(
+					'GD imagettfbbox() failed for font probe: ' . $ttf_path
+					);
+			}
+			$font_ascender  = (int) abs(min($probe_box[5], $probe_box[7]));
+			$font_descender = (int) max($probe_box[1], $probe_box[3]);
+
+			// ---- Line height ----
+			// Take the LARGER of:
+			//   (a) (font_ascender + font_descender) * 1.3  — the 30%
+			//       buffer accounts for anti-aliasing softening that
+			//       effectively widens rendered glyphs by 0.5-1 px on
+			//       each edge, eating into the inter-line gap.
+			//   (b) size * lineHeight                       — user-tunable
+			//       multiplier (default 1.3).
+			//
+			// Using max() guarantees no overlap regardless of which
+			// one is larger. Either bound is independently safe.
+			$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
+			? (float) $cfg['lineHeight']
+			: 1.3;
+
+			// When stroke is enabled, EACH stroked line expands by
+			// stroke_w in all directions: line 0's descender reaches
+			// stroke_w lower, line 1's ascender reaches stroke_w higher.
+			// Total gap stolen between lines = 2 × stroke_w.
+			// Adding 2 × stroke_w to line_height exactly cancels this,
+			// so stroked multi-line text has the same visual gap as
+			// un-stroked text.
+			$stroke_padding = $cfg['stroke']['enabled']
+			? max(1, (int) $cfg['stroke']['width']) * 2
+			: 0;
+
+			$buffered_font_height = (int) round(($font_ascender + $font_descender) * 1.3 + $cfg['size'] * 0.1) + $stroke_padding;
+			$size_based_height    = (int) round($cfg['size'] * $multiplier) + $stroke_padding;
+			$line_height          = max($buffered_font_height, $size_based_height);
+
+			// ---- Block dimensions ----
+			// Width: widest single line. Height: tallest single line's
+			// visual extent + (n-1) inter-line spacings. Using the
+			// per-line visual height (not size * n) ensures the block
+			// bbox reflects the actual inked extent, with the rest of
+			// the height coming from inter-line spacing.
+			$block_width  = $max_line_width;
+			$block_height = $max_line_visual_height + max(0, ($num_lines - 1) * $line_height);
+
+			[$block_x, $block_y] = $this->computeTextTopLeft(
+				$anchor, $cfg['offsetX'], $cfg['offsetY'],
+				$current_width, $current_height,
+				$block_width, $block_height
+				);
+
+			// First-line baseline uses the FONT-LEVEL ascender, not the
+			// per-line ascender. The font-level value (from the probe) is
+			// correct for any input string, even ones whose first line
+			// happens to contain no ascender glyphs (e.g. all-lowercase,
+			// starting with 'i' or 'l').
+			$first_line_baseline = $block_y + $font_ascender;
+
+			// ---- Background pill (drawn once around the block) ----
+			if ($cfg['background']['enabled'])
+			{
+				$this->drawTextBackgroundGd(
+					$block_x, $block_y, $block_width, $block_height,
+					$cfg['background']
+					);
+			}
+
+			// ---- Pre-allocate colors once ----
+			$main_rgb = $this->parseColor($cfg['color']);
+			$main_color = imagecolorallocatealpha(
+				$this->old_image,
+				$main_rgb['r'], $main_rgb['g'], $main_rgb['b'],
+				$this->alphaToGd127($cfg['alpha'])
+				);
+			if ($main_color === false)
+			{
+				throw new RuntimeException('GD: failed to allocate main text color');
+			}
+
+			$shadow_color = null;
+			if ($cfg['shadow']['enabled'])
+			{
+				$s = $this->parseColor($cfg['shadow']['color']);
+				$c = imagecolorallocatealpha(
 					$this->old_image,
-					$main_rgb['r'], $main_rgb['g'], $main_rgb['b'],
-					$this->alphaToGd127($cfg['alpha'])
+					$s['r'], $s['g'], $s['b'],
+					$this->alphaToGd127(100)
 					);
-				if ($main_color === false)
+				if ($c === false)
 				{
-					throw new RuntimeException('GD: failed to allocate main text color');
+					throw new RuntimeException('GD: failed to allocate shadow color');
+				}
+				$shadow_color = $c;
+			}
+
+			$stroke_color = null;
+			$stroke_w     = 0;
+			if ($cfg['stroke']['enabled'])
+			{
+				$s = $this->parseColor($cfg['stroke']['color']);
+				$c = imagecolorallocatealpha(
+					$this->old_image,
+					$s['r'], $s['g'], $s['b'],
+					$this->alphaToGd127(100)
+					);
+				if ($c === false)
+				{
+					throw new RuntimeException('GD: failed to allocate stroke color');
+				}
+				$stroke_color = $c;
+				$stroke_w = max(1, (int) $cfg['stroke']['width']);
+			}
+
+			$align_normalized = strtolower($cfg['align']);
+
+			// ---- Per-line rendering in shadow → stroke → main order ----
+			foreach ($lines as $i => $line)
+			{
+				if ($line === '')
+				{
+					continue;
 				}
 
-				$shadow_color = null;
-				if ($cfg['shadow']['enabled'])
+				$line_w = $line_widths[$i];
+				$line_x = match ($align_normalized) {
+					'left'  => $block_x,
+					'right' => $block_x + $block_width - $line_w,
+					default => (int) ($block_x + ($block_width - $line_w) / 2),
+				};
+
+				// baseline of line i = first-line baseline + i * line_height.
+				$baseline = $first_line_baseline + $i * $line_height;
+
+				// 1. Shadow — drawn beneath everything else.
+				if ($shadow_color !== null)
 				{
-					$s = $this->parseColor($cfg['shadow']['color']);
-					$c = imagecolorallocatealpha(
-						$this->old_image,
-						$s['r'], $s['g'], $s['b'],
-						$this->alphaToGd127(100)
-						);
-					if ($c === false)
-					{
-						throw new RuntimeException('GD: failed to allocate shadow color');
-					}
-					$shadow_color = $c;
-				}
-
-				$stroke_color = null;
-				$stroke_w     = 0;
-				if ($cfg['stroke']['enabled'])
-				{
-					$s = $this->parseColor($cfg['stroke']['color']);
-					$c = imagecolorallocatealpha(
-						$this->old_image,
-						$s['r'], $s['g'], $s['b'],
-						$this->alphaToGd127(100)
-						);
-					if ($c === false)
-					{
-						throw new RuntimeException('GD: failed to allocate stroke color');
-					}
-					$stroke_color = $c;
-					$stroke_w = max(1, (int) $cfg['stroke']['width']);
-				}
-
-				$align_normalized = strtolower($cfg['align']);
-
-				// ---- Per-line rendering in shadow → stroke → main order ----
-				foreach ($lines as $i => $line)
-				{
-					if ($line === '')
-					{
-						continue;
-					}
-
-					$line_w = $line_widths[$i];
-					$line_x = match ($align_normalized) {
-						'left'  => $block_x,
-						'right' => $block_x + $block_width - $line_w,
-						default => (int) ($block_x + ($block_width - $line_w) / 2),
-					};
-
-					// baseline of line i = first-line baseline + i * line_height.
-					$baseline = $first_line_baseline + $i * $line_height;
-
-					// 1. Shadow — drawn beneath everything else.
-					if ($shadow_color !== null)
-					{
-						imagettftext(
-							$this->old_image,
-							$cfg['size'], $cfg['angle'],
-							$line_x + $cfg['shadow']['offsetX'],
-							$baseline + $cfg['shadow']['offsetY'],
-							$shadow_color,
-							$ttf_path,
-							$line
-							);
-					}
-
-					// 2. Stroke — replicate text at every pixel offset within
-					//    stroke_w. imagettftext() has no native stroke, so
-					//    this rasterization trick is the only option in GD.
-					if ($stroke_color !== null)
-					{
-						for ($sx = -$stroke_w; $sx <= $stroke_w; $sx++)
-						{
-							for ($sy = -$stroke_w; $sy <= $stroke_w; $sy++)
-							{
-								if ($sx === 0 && $sy === 0)
-								{
-									continue;
-								}
-								imagettftext(
-									$this->old_image,
-									$cfg['size'], $cfg['angle'],
-									$line_x + $sx,
-									$baseline + $sy,
-									$stroke_color,
-									$ttf_path,
-									$line
-									);
-							}
-						}
-					}
-
-					// 3. Main text — on top of stroke and shadow.
 					imagettftext(
 						$this->old_image,
 						$cfg['size'], $cfg['angle'],
-						$line_x,
-						$baseline,
-						$main_color,
+						$line_x + $cfg['shadow']['offsetX'],
+						$baseline + $cfg['shadow']['offsetY'],
+						$shadow_color,
 						$ttf_path,
 						$line
 						);
 				}
-			}
-			else
-			{
-				// Built-in GD font fallback.
-				//
-				// Bitmap fonts have no ascender/descender separation, so we
-				// use char_h directly. No bbox under-reporting quirk to
-				// compensate for here, but we use the same lineHeight
-				// multiplier (default 1.5) for cross-backend consistency.
-				$font   = 5;
-				$char_w = imagefontwidth($font);
-				$char_h = imagefontheight($font);
 
-				$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
-				? (float) $cfg['lineHeight']
-				: 1.5;
-				$line_height = (int) round($char_h * $multiplier);
-
-				$lines = explode("\n", $text);
-				$line_widths     = [];
-				$max_line_width  = 0;
-				foreach ($lines as $line)
+				// 2. Stroke — replicate text at every pixel offset within
+				//    stroke_w. imagettftext() has no native stroke, so
+				//    this rasterization trick is the only option in GD.
+				if ($stroke_color !== null)
 				{
-					$lw = strlen($line) * $char_w;
-					$line_widths[] = $lw;
-					if ($lw > $max_line_width)
+					for ($sx = -$stroke_w; $sx <= $stroke_w; $sx++)
 					{
-						$max_line_width = $lw;
+						for ($sy = -$stroke_w; $sy <= $stroke_w; $sy++)
+						{
+							if ($sx === 0 && $sy === 0)
+							{
+								continue;
+							}
+							imagettftext(
+								$this->old_image,
+								$cfg['size'], $cfg['angle'],
+								$line_x + $sx,
+								$baseline + $sy,
+								$stroke_color,
+								$ttf_path,
+								$line
+								);
+						}
 					}
 				}
 
-				$block_width  = $max_line_width;
-				$block_height = $char_h + max(0, (count($lines) - 1) * $line_height);
-
-				[$block_x, $block_y] = $this->computeTextTopLeft(
-					$anchor, $cfg['offsetX'], $cfg['offsetY'],
-					$current_width, $current_height,
-					$block_width, $block_height
-					);
-
-				if ($cfg['background']['enabled'])
-				{
-					$this->drawTextBackgroundGd(
-						$block_x, $block_y, $block_width, $block_height,
-						$cfg['background']
-						);
-				}
-
-				$rgb = $this->parseColor($cfg['color']);
-				$text_color = imagecolorallocatealpha(
+				// 3. Main text — on top of stroke and shadow.
+				imagettftext(
 					$this->old_image,
-					$rgb['r'], $rgb['g'], $rgb['b'],
-					$this->alphaToGd127($cfg['alpha'])
+					$cfg['size'], $cfg['angle'],
+					$line_x,
+					$baseline,
+					$main_color,
+					$ttf_path,
+					$line
 					);
-				if ($text_color === false)
-				{
-					throw new RuntimeException('GD: failed to allocate text color');
-				}
+			}
+		}
+		else
+		{
+			// Built-in GD font fallback.
+			//
+			// Bitmap fonts have no ascender/descender separation, so we
+			// use char_h directly. No bbox under-reporting quirk to
+			// compensate for here, but we use the same lineHeight
+			// multiplier (default 1.5) for cross-backend consistency.
+			$font   = 5;
+			$char_w = imagefontwidth($font);
+			$char_h = imagefontheight($font);
 
-				// imagestring() expects the TOP-LEFT of the bitmap glyph,
-				// not the baseline. So for vertical centering, first line's
-				// y = block_y exactly (no ascender offset).
-				$align_normalized = strtolower($cfg['align']);
-				$yy = $block_y;
-				foreach ($lines as $i => $line)
+			$multiplier = (isset($cfg['lineHeight']) && $cfg['lineHeight'] > 0)
+			? (float) $cfg['lineHeight']
+			: 1.5;
+			$line_height = (int) round($char_h * $multiplier);
+
+			$lines = explode("\n", $text);
+			$line_widths     = [];
+			$max_line_width  = 0;
+			foreach ($lines as $line)
+			{
+				$lw = strlen($line) * $char_w;
+				$line_widths[] = $lw;
+				if ($lw > $max_line_width)
 				{
-					$line_w = $line_widths[$i];
-					$line_x = match ($align_normalized) {
-						'left'  => $block_x,
-						'right' => $block_x + $block_width - $line_w,
-						default => (int) ($block_x + ($block_width - $line_w) / 2),
-					};
-					imagestring($this->old_image, $font, $line_x, $yy, $line, $text_color);
-					$yy += $line_height;
+					$max_line_width = $lw;
 				}
 			}
 
-			$this->working_image = $this->old_image;
+			$block_width  = $max_line_width;
+			$block_height = $char_h + max(0, (count($lines) - 1) * $line_height);
 
-			return $this;
+			[$block_x, $block_y] = $this->computeTextTopLeft(
+				$anchor, $cfg['offsetX'], $cfg['offsetY'],
+				$current_width, $current_height,
+				$block_width, $block_height
+				);
+
+			if ($cfg['background']['enabled'])
+			{
+				$this->drawTextBackgroundGd(
+					$block_x, $block_y, $block_width, $block_height,
+					$cfg['background']
+					);
+			}
+
+			$rgb = $this->parseColor($cfg['color']);
+			$text_color = imagecolorallocatealpha(
+				$this->old_image,
+				$rgb['r'], $rgb['g'], $rgb['b'],
+				$this->alphaToGd127($cfg['alpha'])
+				);
+			if ($text_color === false)
+			{
+				throw new RuntimeException('GD: failed to allocate text color');
+			}
+
+			// imagestring() expects the TOP-LEFT of the bitmap glyph,
+			// not the baseline. So for vertical centering, first line's
+			// y = block_y exactly (no ascender offset).
+			$align_normalized = strtolower($cfg['align']);
+			$yy = $block_y;
+			foreach ($lines as $i => $line)
+			{
+				$line_w = $line_widths[$i];
+				$line_x = match ($align_normalized) {
+					'left'  => $block_x,
+					'right' => $block_x + $block_width - $line_w,
+					default => (int) ($block_x + ($block_width - $line_w) / 2),
+				};
+				imagestring($this->old_image, $font, $line_x, $yy, $line, $text_color);
+				$yy += $line_height;
+			}
+		}
+
+		$this->working_image = $this->old_image;
+
+		return $this;
 	}
 
 	/**
@@ -888,22 +888,22 @@ class GD extends PHPThumb
 		int $canvas_w, int $canvas_h,
 		int $text_w, int $text_h
 		): array
-		{
-			[$h_anchor, $v_anchor] = $anchor;
+	{
+		[$h_anchor, $v_anchor] = $anchor;
 
-			$x = match ($h_anchor) {
-				'left'   => $offset_x,
-				'right'  => $canvas_w - $text_w - $offset_x,
-				default  => (int) (($canvas_w - $text_w) / 2),
-			};
+		$x = match ($h_anchor) {
+			'left'   => $offset_x,
+			'right'  => $canvas_w - $text_w - $offset_x,
+			default  => (int) (($canvas_w - $text_w) / 2),
+		};
 
-			$y = match ($v_anchor) {
-				'top'    => $offset_y,
-				'bottom' => $canvas_h - $text_h - $offset_y,
-				default  => (int) (($canvas_h - $text_h) / 2),
-			};
+		$y = match ($v_anchor) {
+			'top'    => $offset_y,
+			'bottom' => $canvas_h - $text_h - $offset_y,
+			default => (int) (($canvas_h - $text_h) / 2),
+		};
 
-			return [$x, $y];
+		return [$x, $y];
 	}
 
 	/**
@@ -1089,24 +1089,24 @@ class GD extends PHPThumb
 	protected function drawTextBackgroundGd(
 		int $x, int $y, int $w, int $h, array $bg
 		): void
+	{
+		$padding = (int) ($bg['padding'] ?? 4);
+		$rgb = $this->parseColor($bg['color']);
+		$bg_color = imagecolorallocatealpha(
+			$this->old_image,
+			$rgb['r'], $rgb['g'], $rgb['b'],
+			$this->alphaToGd127((int) ($bg['alpha'] ?? 75))
+			);
+		if ($bg_color === false)
 		{
-			$padding = (int) ($bg['padding'] ?? 4);
-			$rgb = $this->parseColor($bg['color']);
-			$bg_color = imagecolorallocatealpha(
-				$this->old_image,
-				$rgb['r'], $rgb['g'], $rgb['b'],
-				$this->alphaToGd127((int) ($bg['alpha'] ?? 75))
-				);
-			if ($bg_color === false)
-			{
-				return;
-			}
-			imagefilledrectangle(
-				$this->old_image,
-				$x - $padding, $y - $padding,
-				$x + $w + $padding, $y + $h + $padding,
-				$bg_color
-				);
+			return;
+		}
+		imagefilledrectangle(
+			$this->old_image,
+			$x - $padding, $y - $padding,
+			$x + $w + $padding, $y + $h + $padding,
+			$bg_color
+			);
 	}
 
 	/**
@@ -1372,7 +1372,7 @@ class GD extends PHPThumb
 	 * Note that if your image is Landscape and you choose either of the Top or Bottom quadrants (which won't
 	 * make sense since only the Left and Right would be available, then the Center quadrant will be used
 	 * to crop. This would have exactly the same result as using adaptiveResize().
-	 * The same goes if you are portrait and you choose either the Left or Right quadrants.
+	 * The same goes if you are portrait and you choose either of the Left or Right quadrants.
 	 */
 	public function adaptiveResizeQuadrant(int $width, int $height, string $quadrant = 'C'): GD
 	{
@@ -1496,7 +1496,7 @@ class GD extends PHPThumb
 	{
 		// do some calculations
 		$crop_width		= ($this->current_dimensions['width'] < $crop_width)	? $this->current_dimensions['width']	: $crop_width;
-		$crop_height	= ($this->current_dimensions['height'] < $crop_height)	? $this->current_dimensions['height']	: $crop_height;
+		$crop_height	= ($this->current_dimensions['height'] < $crop_height) ? $this->current_dimensions['height'] : $crop_height;
 
 		// ensure everything's in bounds
 		if (($start_x + $crop_width) > $this->current_dimensions['width'])
@@ -1550,8 +1550,8 @@ class GD extends PHPThumb
 	public function rotateImage(string $direction = 'CW'): GD
 	{
 		$degrees = match ($direction) {
-			'CW'		=> 90,
-			default		=> -90,
+			'CW'	=> 90,
+			default	=> -90,
 		};
 
 		$this->rotateImageNDegrees($degrees);
@@ -2039,7 +2039,7 @@ class GD extends PHPThumb
 				{
 					header('Content-type: image/avif');
 				}
-				imageavif($this->old_image, null, $this->options['avifQuality']);
+				imageavif($this->old_image, null, $this->qualityForFormat('AVIF'));
 				break;
 			case 'GIF':
 				if ($raw_data === false)
@@ -2053,7 +2053,7 @@ class GD extends PHPThumb
 				{
 					header('Content-type: image/jpeg');
 				}
-				imagejpeg($this->old_image, null, $this->options['jpegQuality']);
+				imagejpeg($this->old_image, null, $this->qualityForFormat('JPEG'));
 				break;
 			case 'PNG':
 			case 'STRING':
@@ -2068,7 +2068,7 @@ class GD extends PHPThumb
 				{
 					header('Content-type: image/webp');
 				}
-				imagewebp($this->old_image, null, $this->options['webpQuality']);
+				imagewebp($this->old_image, null, $this->qualityForFormat('WEBP'));
 				break;
 		}
 
@@ -2144,11 +2144,11 @@ class GD extends PHPThumb
 		}
 
 		$save = match ($format) {
-			'AVIF'			=> imageavif	($this->old_image, $file_name, $this->options['avifQuality']),
+			'AVIF'			=> imageavif	($this->old_image, $file_name, $this->qualityForFormat('AVIF')),
 			'GIF'			=> imagegif		($this->old_image, $file_name),
-			'JPEG', 'JPG'	=> imagejpeg	($this->old_image, $file_name, $this->options['jpegQuality']),
+			'JPEG', 'JPG'	=> imagejpeg	($this->old_image, $file_name, $this->qualityForFormat('JPEG')),
 			'PNG'			=> imagepng		($this->old_image, $file_name),
-			'WEBP'			=> imagewebp	($this->old_image, $file_name, $this->options['webpQuality']),
+			'WEBP'			=> imagewebp	($this->old_image, $file_name, $this->qualityForFormat('WEBP')),
 		};
 
 		return $this;
@@ -2163,6 +2163,24 @@ class GD extends PHPThumb
 	 */
 	public function setOptions(array $options = []): GD
 	{
+		// A quality preset is expanded into the per-format quality options
+		// and merged *before* the caller's own options, so an explicit
+		// 'jpegQuality' (or any other per-format value) always wins over
+		// the preset.
+		if (array_key_exists('qualityPreset', $options))
+		{
+			$preset = $options['qualityPreset'];
+			unset($options['qualityPreset']);
+
+			if ($preset !== null && $preset !== '')
+			{
+				$options = array_merge(
+					$this->qualityPresetOptions((string) $preset),
+					$options
+					);
+			}
+		}
+
 		// we've yet to init the default options, so create them here
 		if (count($this->options) == 0)
 		{
@@ -2336,6 +2354,46 @@ class GD extends PHPThumb
 	#################################
 	# ----- UTILITY FUNCTIONS ----- #
 	#################################
+
+	/**
+	 * Maps canonical format names to the option key that controls the encoder
+	 * quality for that format.
+	 *
+	 * GD has no JPEG XL codec (imagecreatefromjxl() / imagejxl() do not
+	 * exist), so 'JXL' is deliberately absent and the quality presets leave
+	 * jxlQuality untouched for this backend.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function qualityOptionMap(): array
+	{
+		return [
+			'AVIF' => 'avifQuality',
+			'JPEG' => 'jpegQuality',
+			'WEBP' => 'webpQuality',
+		];
+	}
+
+	/**
+	 * Returns the encoder quality to use for a given format.
+	 *
+	 * GD signals "use the codec's default" with -1, which is what a null
+	 * option value (for example the 'off' quality preset) maps to.
+	 *
+	 * @param string $format Format name in any case (e.g. 'JPEG', 'jpg').
+	 * @return int Quality between 0 and 100, or -1 for the codec default.
+	 */
+	protected function qualityForFormat(string $format): int
+	{
+		$quality = match (strtoupper(trim($format))) {
+			'AVIF' => $this->options['avifQuality'],
+			'JPEG', 'JPG' => $this->options['jpegQuality'],
+			'WEBP' => $this->options['webpQuality'],
+			default => null,
+		};
+
+		return ($quality === null) ? -1 : (int) $quality;
+	}
 
 	/**
 	 * Calculates a new width and height for the image based on $this->max_width and the provided dimensions

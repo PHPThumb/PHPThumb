@@ -951,22 +951,22 @@ class Imagick extends PHPThumb
 		int $canvas_w, int $canvas_h,
 		int $text_w, int $text_h
 		): array
-		{
-			[$h_anchor, $v_anchor] = $anchor;
+	{
+		[$h_anchor, $v_anchor] = $anchor;
 
-			$x = match ($h_anchor) {
-				'left'   => $offset_x,
-				'right'  => $canvas_w - $text_w - $offset_x,
-				default  => (int) (($canvas_w - $text_w) / 2),
-			};
+		$x = match ($h_anchor) {
+			'left'   => $offset_x,
+			'right'  => $canvas_w - $text_w - $offset_x,
+			default  => (int) (($canvas_w - $text_w) / 2),
+		};
 
-			$y = match ($v_anchor) {
-				'top'    => $offset_y,
-				'bottom' => $canvas_h - $text_h - $offset_y,
-				default  => (int) (($canvas_h - $text_h) / 2),
-			};
+		$y = match ($v_anchor) {
+			'top'    => $offset_y,
+			'bottom' => $canvas_h - $text_h - $offset_y,
+			default => (int) (($canvas_h - $text_h) / 2),
+		};
 
-			return [$x, $y];
+		return [$x, $y];
 	}
 
 	/**
@@ -1632,7 +1632,17 @@ class Imagick extends PHPThumb
 
 		// Let Imagick name the format it is actually holding; the helper
 		// maps it to the correct mime type (including the aliases Imagick may report, e.g. "jpe" or "tif").
-		$mime_type = self::mimeTypeForFormat((string) $this->old_image->getImageFormat());
+		$image_format = (string) $this->old_image->getImageFormat();
+		$mime_type = self::mimeTypeForFormat($image_format);
+
+		// Apply the configured encoder quality so that streamed output
+		// matches what save() would have written to disk.
+		$quality = $this->qualityForFormat($image_format);
+
+		if ($quality !== null)
+		{
+			$this->old_image->setImageCompressionQuality($quality);
+		}
 
 		if ($raw_data === false)
 		{
@@ -1678,13 +1688,7 @@ class Imagick extends PHPThumb
 			}
 		}
 
-		$quality = match ($format) {
-			'AVIF'      => $this->options['avifQuality'],
-			'JPEG'      => $this->options['jpegQuality'],
-			'JXL'       => $this->options['jxlQuality'],
-			'WEBP'      => $this->options['webpQuality'],
-			default     => null,
-		};
+		$quality = $this->qualityForFormat($format);
 
 		if ($quality !== null)
 		{
@@ -1711,13 +1715,31 @@ class Imagick extends PHPThumb
 	 */
 	public function setOptions(array $options = []): Imagick
 	{
+		// A quality preset is expanded into the per-format quality options
+		// and merged *before* the caller's own options, so an explicit
+		// 'jpegQuality' (or any other per-format value) always wins over
+		// the preset.
+		if (array_key_exists('qualityPreset', $options))
+		{
+			$preset = $options['qualityPreset'];
+			unset($options['qualityPreset']);
+
+			if ($preset !== null && $preset !== '')
+			{
+				$options = array_merge(
+					$this->qualityPresetOptions((string) $preset),
+					$options
+					);
+			}
+		}
+
 		if (count($this->options) == 0)
 		{
 			$default_options = [
 				'resizeUp'              => false,
 				'avifQuality'           => 100,
 				'jpegQuality'           => 100,
-				'jxlQuality'            => 100,
+				'jxlQuality'            => 90,
 				'webpQuality'           => 100,
 				'correctPermissions'    => false,
 				'preserveAlpha'         => true,
@@ -1883,6 +1905,52 @@ class Imagick extends PHPThumb
 				0
 				);
 		}
+	}
+
+	/**
+	 * Maps canonical format names to the option key that controls the encoder
+	 * quality for that format.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function qualityOptionMap(): array
+	{
+		return [
+			'AVIF' => 'avifQuality',
+			'JPEG' => 'jpegQuality',
+			'JXL'  => 'jxlQuality',
+			'WEBP' => 'webpQuality',
+		];
+	}
+
+	/**
+	 * Returns the encoder quality to use for a given format, or null when no
+	 * quality should be applied (leaving the codec's own default in place).
+	 *
+	 * Every format has its own independent option; there is deliberately no
+	 * fallback between them. The 0-100 scale is not interchangeable between
+	 * codecs - each maps it onto a different internal parameter (libjpeg
+	 * quantization tables, libwebp VBR quality, an AV1 quantizer, libjxl
+	 * distance) - so reusing one format's setting for another would
+	 * silently mis-set the encoder.
+	 *
+	 * A null value means "do not call setImageCompressionQuality()", which is
+	 * what the 'off' quality preset relies on. This is distinct from a
+	 * quality of 0, which is passed through to the codec.
+	 *
+	 * @param string $format Format name in any case (e.g. 'JPEG', 'jpg', 'JXL').
+	 */
+	protected function qualityForFormat(string $format): ?int
+	{
+		$quality = match (self::normalizeFormatName($format)) {
+			'AVIF' => $this->options['avifQuality'],
+			'JPEG' => $this->options['jpegQuality'],
+			'JXL'  => $this->options['jxlQuality'],
+			'WEBP' => $this->options['webpQuality'],
+			default => null,
+		};
+
+		return ($quality === null) ? null : (int) $quality;
 	}
 
 	/**
