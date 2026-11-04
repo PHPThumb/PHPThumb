@@ -30,6 +30,7 @@ PHP Thumb is a simple, modern image manipulation library aimed primarily at thum
   - [Output](#output)
 - [Plugins](#plugins)
 - [Configuration Options](#configuration-options)
+- [Quality Presets](#quality-presets)
 - [Examples](#examples)
 - [Documentation](#documentation)
 - [Testing](#testing)
@@ -51,12 +52,16 @@ PHPThumb 2.5 is a **feature expansion** release — every manipulation method st
 | `border()` | Add a solid-color frame of any thickness |
 | `text()` | Render text with font (auto-resolved via fontconfig), color, size, shadow, stroke, background, multi-line alignment, and 9-grid positioning |
 | **Advanced filter wrappers** | `grayscale()`, `brightness()`, `contrast()`, `blur()`, `pixelate()`, `edgeDetect()`, `emboss()`, `smooth()` — chainable convenience wrappers around `imageFilter()` |
+| **Quality presets** | `setQualityPreset('off' \| 'max' \| 'high' \| 'medium' \| 'low')` — one call sets a perceptually comparable quality across JPEG, WebP, AVIF and JXL |
+| **Per-format quality options** | `jpegQuality`, `webpQuality`, `avifQuality` and the new `jxlQuality` are independent knobs; `null` means "use the codec's own default" |
 
 All new methods are available on **both** backends. See the dedicated sections below for full documentation.
 
 **Migration notes for 2.4 → 2.5:**
 
-* The default options array now includes three additional keys: `sharpenAmount`, `textFont`, `textDefaultSize`. Existing code that compares `getOptions()` output byte-for-byte (i.e. test assertions) will need to be updated to include the new keys.
+* The default options array now includes five additional keys: `sharpenAmount`, `textFont`, `textDefaultSize`, `jxlQuality`. Existing code that compares `getOptions()` output byte-for-byte (i.e. test assertions) will need to be updated to include the new keys.
+* The quality options now accept `null`, which means "apply no quality setting" and leaves the codec's own default in place. This is distinct from a quality of `0`.
+* Quality options are now honoured by `show()` as well as `save()`. Previously, streamed output silently ignored them.
 * No public method signatures were changed. No methods were renamed or removed.
 
 ---
@@ -84,6 +89,11 @@ All new methods are available on **both** backends. See the dedicated sections b
 
 - **Text overlay / captioning** — Render text with font (auto-resolved via fontconfig on Linux/macOS), color, size, multi-line alignment (`align`), per-line spacing (`lineHeight`), shadow, stroke, and background pill
 - **Border / frame** — Solid-color border around the image
+
+### Output quality control
+
+- **Independent per-format quality** — `jpegQuality`, `webpQuality`, `avifQuality` and `jxlQuality` are separate knobs, because the 0–100 scale is not interchangeable between codecs
+- **Quality presets** — One call (`setQualityPreset()` or `'qualityPreset' => …`) applies a perceptually comparable quality tier across every supported format
 
 ### Extensibility & integration
 
@@ -523,6 +533,8 @@ For backend-specific magic (e.g. Imagick's `sepiaToneImage`, GD's `IMG_FILTER_ME
 #### `show(bool $raw_data = false): self`
 Outputs the image directly to the browser (sets the appropriate `Content-Type` header). Pass `true` for `$raw_data` to skip the header.
 
+The configured encoder quality (see [Configuration Options](#configuration-options)) is applied before the image is emitted, so streamed output matches what `save()` would have written.
+
 #### `save(string $file_name, ?string $format = null): self`
 Writes the image to disk. Format is auto-detected from the current image, or you can force a format:
 
@@ -613,7 +625,7 @@ $thumb->save('scan-trimmed.png', 'PNG');
 ```
 
 #### `PHPThumb\Plugins\Reflection`
-Generates a classic glossy reflection effect.d
+Generates a classic glossy reflection effect.
 
 ```php
 $thumb = new PHPThumb\GD('logo.png', [], [
@@ -682,10 +694,11 @@ $thumb = new PHPThumb\GD('image.jpg', [
 | Option | Type | Default | Backend | Description |
 |--------|------|---------|---------|-------------|
 | `resizeUp` | `bool` | `false` | GD & Imagick | Allow upscaling images that are smaller than the target size |
-| `jpegQuality` | `int` | `100` | GD & Imagick | JPEG output quality (0–100) |
-| `jxlQuality` | `int` | `100` | Imagick | JXL output quality (0–100) |
-| `webpQuality` | `int` | `100` | GD & Imagick | WebP output quality (0–100) |
-| `avifQuality` | `int` | `100` | GD & Imagick | AVIF output quality (0–100) |
+| `jpegQuality` | `int\|null` | `100` | GD & Imagick | JPEG output quality (0–100). `null` = codec default |
+| `jxlQuality` | `int\|null` | `90` | Imagick | JPEG XL output quality (0–100). Independent of `jpegQuality`. `null` = codec default |
+| `webpQuality` | `int\|null` | `100` | GD & Imagick | WebP output quality (0–100). `null` = codec default |
+| `avifQuality` | `int\|null` | `100` | GD & Imagick | AVIF output quality (0–100). `null` = codec default |
+| `qualityPreset` | `string` | — | GD & Imagick | Constructor / `setOptions()` shortcut; applies a named preset (`off`, `max`, `high`, `medium`, `low`). Not retained as an option |
 | `correctPermissions` | `bool` | `false` | GD & Imagick | Attempt to `chmod` the target directory if not writable |
 | `preserveAlpha` | `bool` | `true` | GD & Imagick | Preserve PNG alpha channel |
 | `alphaMaskColor` | `array` | `[255, 255, 255]` | GD & Imagick | RGB color used for PNG alpha mask |
@@ -695,6 +708,106 @@ $thumb = new PHPThumb\GD('image.jpg', [
 | `sharpenAmount` | `int` | `50` | GD & Imagick | Default sharpening strength used by `sharpen()` when no argument is passed |
 | `textFont` | `string\|null` | `null` | GD & Imagick | Default TTF font path used by `text()` when `options.font` is not provided |
 | `textDefaultSize` | `int` | `12` | GD & Imagick | Default font size used by `text()` when `options.size` is not provided |
+
+### Quality options are per-format, not interchangeable
+
+The 0–100 scale is **not** comparable between codecs. Each maps it onto a different internal parameter:
+
+| Format | ImageMagick / codec parameter | Notes |
+|--------|------------------------------|-------|
+| JPEG | libjpeg quantization table scale | `100` is still **lossy** (DCT rounding, chroma subsampling) |
+| WebP | libwebp VBR quality target | `100` is still **lossy** |
+| AVIF | AV1 quantizer (0–63, inverted) | `100` selects quantizer `0` — **mathematically lossless** |
+| JXL | libjxl `distance` (inverted) | `100` selects distance `0` — **mathematically lossless** |
+
+Because the curves differ, `quality 80` in JPEG and `quality 80` in JXL are two different things that merely share an integer. At comparable perceptual quality, typical file sizes rank roughly:
+
+```
+JXL ≈ AVIF  <  WebP  <  JPEG
+```
+
+This is why each format has its own option, and why `jxlQuality` deliberately does **not** fall back to `jpegQuality`.
+
+> `null` means "apply no quality setting" and leaves the codec's own default in place — it is **not** the same as a quality of `0`. On GD this maps to the `-1` sentinel that `imagejpeg()` / `imagewebp()` / `imageavif()` accept; on Imagick the `setImageCompressionQuality()` call is skipped entirely.
+
+---
+
+## Quality Presets
+
+Because the raw numbers aren't interchangeable, PHPThumb ships with a small table of **presets** that pick per-codec values which produce a comparable *perceptual* result. Apply one with a single call:
+
+```php
+$thumb = new PHPThumb\Imagick('photo.jpg');
+$thumb->setQualityPreset('medium')
+      ->resize(800, 0)
+      ->save('photo.webp');
+```
+
+Or via the constructor / `setOptions()`:
+
+```php
+$thumb = new PHPThumb\Imagick('photo.jpg', ['qualityPreset' => 'medium']);
+```
+
+The preset is expanded **before** your own options, so an explicit per-format value always wins:
+
+```php
+$thumb = new PHPThumb\Imagick('photo.jpg', [
+    'qualityPreset' => 'low',
+    'jpegQuality'   => 92,   // overrides the preset for JPEG only
+]);
+```
+
+### Available presets
+
+| Preset | jpeg | webp | avif | jxl | Meaning |
+|--------|------|------|------|-----|---------|
+| `off` | `null` | `null` | `null` | `null` | No quality applied; each codec's own default |
+| `max` | 100 | 100 | 100 | 100 | Maximum quality each codec offers |
+| `high` | 90 | 88 | 65 | 90 | Visually near-lossless |
+| `medium` | 80 | 78 | 50 | 78 | Good quality; typical for web delivery |
+| `low` | 65 | 62 | 35 | 62 | Aggressive compression; small files |
+
+Notes:
+
+- The top tier is named **`max`**, not `lossless` — JPEG and WebP remain lossy at their maximum quality; only AVIF and JXL can reach true lossless.
+- GD has no JPEG XL codec, so presets leave `jxlQuality` untouched on the GD backend.
+- Preset names are matched case-insensitively after trimming (`'MAX'`, `' Max '` both work). An unknown name throws `\InvalidArgumentException`.
+
+### Inspecting the table
+
+```php
+PHPThumb\PHPThumb::getQualityPresets();
+// ['off', 'max', 'high', 'medium', 'low']
+
+PHPThumb\PHPThumb::getQualityPreset('high');
+// ['jpeg' => 90, 'webp' => 88, 'avif' => 65, 'jxl' => 90]
+```
+
+### Tuning it yourself
+
+The preset values are starting points, not gospel — validate them against your own content. Two things shift the result significantly at an identical quality number:
+
+- **Encoder effort/speed** — AVIF and JXL can be tuned with `heic:speed` / `jxl:effort` defines; slower encoding usually means smaller files.
+- **Chroma subsampling** — affects JPEG and WebP heavily at lower qualities, independently of the quality number.
+
+To measure on your build and content, compare against a lossless PNG reference (not the source JPEG, or you'll measure the source JPEG's own artifacts):
+
+```bash
+SRC=reference.png
+
+for fmt in jpg webp avif jxl; do
+    echo "=== $fmt ==="
+    for q in 40 50 60 70 80 90 100; do
+        magick "$SRC" -quality "$q" "/tmp/t.$fmt" 2>/dev/null || continue
+        size=$(stat -c%s "/tmp/t.$fmt")
+        ssim=$(magick compare -metric SSIM "$SRC" "/tmp/t.$fmt" null: 2>&1 | awk '{print $1}')
+        printf "  q=%-4s %9d bytes   SSIM=%s\n" "$q" "$size" "$ssim"
+    done
+done
+```
+
+Then pick, for each format, the lowest quality whose SSIM still clears your threshold (e.g. `0.98`). Those are your real per-format constants — set them with the individual quality options.
 
 ---
 
@@ -764,6 +877,12 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 
 // Format conversion
 (new PHPThumb\GD('photo.jpg'))->save('photo.webp', 'WEBP');
+
+// Apply a quality preset (both backends)
+(new PHPThumb\GD('photo.jpg'))
+    ->setQualityPreset('medium')
+    ->resize(800, 0)
+    ->save('preset.webp', 'WEBP');
 
 // Chain everything
 (new PHPThumb\GD('photo.jpg'))
@@ -865,6 +984,16 @@ $wm = (new PHPThumb\Imagick('logo.png'))->resizePercent(20);
         'stroke' => ['enabled' => true, 'color' => '#FFFFFF', 'width' => 2],
     ])
     ->show();
+
+// Imagick: write JPEG XL (Imagick-only format)
+(new PHPThumb\Imagick('photo.jpg'))
+    ->setQualityPreset('high')
+    ->resize(1200, 0)
+    ->save('photo.jxl', 'JXL');
+
+// Imagick: JXL with an explicit per-format quality (independent of jpegQuality)
+(new PHPThumb\Imagick('photo.jpg', ['jxlQuality' => 78]))
+    ->save('photo.jxl', 'JXL');
 ```
 
 Run any example directly:
