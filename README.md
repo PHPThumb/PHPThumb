@@ -59,10 +59,11 @@ All new methods are available on **both** backends. See the dedicated sections b
 
 **Migration notes for 2.4 → 2.5:**
 
-* The default options array now includes five additional keys: `sharpenAmount`, `textFont`, `textDefaultSize`, `jxlQuality`. Existing code that compares `getOptions()` output byte-for-byte (i.e. test assertions) will need to be updated to include the new keys.
+* The default options array now includes four additional keys: `sharpenAmount`, `textFont`, `textDefaultSize`, `jxlQuality`. Existing code that compares `getOptions()` output byte-for-byte (i.e. test assertions) will need to be updated to include the new keys.
 * The quality options now accept `null`, which means "apply no quality setting" and leaves the codec's own default in place. This is distinct from a quality of `0`.
 * Quality options are now honoured by `show()` as well as `save()`. Previously, streamed output silently ignored them.
-* No public method signatures were changed. No methods were renamed or removed.
+* The only public signature change is `imageFilter()`, whose optional arguments were widened from `bool` to `int|float|bool`. This is a widening, so existing calls are unaffected — but numeric arguments now reach the filter instead of being coerced to `true`.
+* `PHPThumb\Imagick::FILTER_*` class constants are new public API.
 
 ---
 
@@ -302,20 +303,56 @@ Arbitrary rotation by N degrees.
 $thumb->rotateImageNDegrees(45);
 ```
 
-#### `imageFilter(int $filter, ...args): self`
-Applies a filter. The argument list matches the underlying extension:
+#### `imageFilter(int $filter, int|float|bool $arg1 = false, int|float|bool $arg2 = false, int|float|bool $arg3 = false, int|float|bool $arg4 = false): self`
+Applies a low-level filter. The filter ids are **backend-specific** — the two backends do not share an id space, so there is no portable "grayscale id".
 
-- **GD**: any `IMG_FILTER_*` constant (`IMG_FILTER_GRAYSCALE`, `IMG_FILTER_NEGATE`, `IMG_FILTER_BRIGHTNESS`, `IMG_FILTER_CONTRAST`, `IMG_FILTER_COLORIZE`, `IMG_FILTER_EDGEDETECT`, `IMG_FILTER_EMBOSS`, `IMG_FILTER_GAUSSIAN_BLUR`, `IMG_FILTER_SELECTIVE_BLUR`, `IMG_FILTER_MEAN_REMOVAL`, `IMG_FILTER_SMOOTH`, `IMG_FILTER_PIXELATE`, etc.).
-- **Imagick**: any `Imagick::FILTER_*` constant (`Imagick::FILTER_GRAYSCALE`, `Imagick::FILTER_NEGATE`, etc.).
+**GD** — any `IMG_FILTER_*` constant:
 
 ```php
-// GD
 $thumb->imageFilter(IMG_FILTER_GRAYSCALE);
 $thumb->imageFilter(IMG_FILTER_COLORIZE, 100, 0, 0); // Red tint
 $thumb->imageFilter(IMG_FILTER_BRIGHTNESS, 50);
+```
 
+**Imagick** — use `PHPThumb\Imagick::FILTER_*`.
+
+> **Why not `Imagick::FILTER_*`?** The legacy `Imagick::filter()` method and its `Imagick::FILTER_*` constants wrapped ImageMagick 6's `MagickFilterImage()` API. ImageMagick 7 removed that API, so ext-imagick 3.5+ dropped both. Calling `imageFilter()` with an `Imagick::FILTER_*` constant on a modern build is a fatal error. (There were never `Imagick::FILTER_GRAYSCALE` or `Imagick::FILTER_NEGATE` constants in any version — those names are GD's.)
+
+PHPThumb republishes the same ids as class constants and implements the filters on primitives that exist in **both** ImageMagick 6 and 7:
+
+| Constant | Id | Effect | Native primitive |
+|----------|----|--------|------------------|
+| `PHPThumb\Imagick::FILTER_POINT` | 1 | No-op (each pixel onto itself) | — |
+| `PHPThumb\Imagick::FILTER_EDGEDETECT` | 3 | Edge detection | `edgeImage()` |
+| `PHPThumb\Imagick::FILTER_EMBOSS` | 4 | Emboss | `embossImage()` |
+| `PHPThumb\Imagick::FILTER_GAUSSIAN` | 5 | Gaussian blur | `gaussianBlurImage()` |
+| `PHPThumb\Imagick::FILTER_LAPLACE` | 6 | Laplacian | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_LAPLACE_ROBERTS` | 7 | Laplacian of Roberts | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_OCTAGON` | 8 | Octagon | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_PREWITT` | 9 | Prewitt | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_ROBERTS` | 10 | Roberts cross | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_SOBEL` | 11 | Sobel | 3×3 convolution |
+| `PHPThumb\Imagick::FILTER_UNSHARP` | 12 | Unsharp mask | `sharpenImage()` |
+
+```php
 // Imagick
-$thumb->imageFilter(\Imagick::FILTER_GRAYSCALE);
+$thumb->imageFilter(\PHPThumb\Imagick::FILTER_SOBEL);
+$thumb->imageFilter(\PHPThumb\Imagick::FILTER_GAUSSIAN, 2, 2); // radius, sigma
+```
+
+Notes:
+
+- `FILTER_CELLULAR` (id `2`) has no ImageMagick 7 equivalent and throws `\InvalidArgumentException`.
+- `FILTER_UNDEFINED` (id `0`) is a sentinel, not a filter — it also throws.
+- An unknown id throws `\InvalidArgumentException`.
+- The convolution filters produce the raw kernel response. That is close to, but not bit-identical with, the legacy ImageMagick 6 result.
+- The optional arguments are typed `int|float|bool`; `false` means *"not supplied"*. Numeric values are honoured (radius / sigma for the filters that take them).
+
+For the full list of emulated filters:
+
+```php
+PHPThumb\Imagick::legacyFilterIds();
+// [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 ```
 
 ### Pad
@@ -424,7 +461,7 @@ Renders `$text` onto the image. The full options array is described below.
 | `offsetY` | `int` | `10` | Padding from the vertical anchor. |
 | `align` | `string` | `'center'` | Per-line horizontal alignment: `'left'` / `'center'` / `'right'`. Multi-line text (`"\n"`) is rendered line-by-line so per-line alignment works correctly. |
 | `alpha` | `int` | `100` | Text opacity, 0–100. |
-| `lineHeight` | `float` | `1.5` | Multi-line spacing multiplier on `size`. `1.0` = tight (no gap), `1.5` = ~50% gap, `2.0` = doubles line spacing. The actual line height also has a floor of the font's measured `ascender + descender`, so lines never overlap regardless of the multiplier. |
+| `lineHeight` | `float` | `1.2` (GD) / `1.3` (Imagick) | Multi-line spacing multiplier on `size`. `1.0` = tight (no gap), `1.5` = ~50% gap, `2.0` = doubles line spacing. The effective line height is the larger of `size × lineHeight` and a font-metric floor (`ascender + descender`, buffered by 30%), so lines never overlap regardless of the multiplier. Lowering it below the floor has no effect. |
 | `shadow` | `array` | `['enabled' => false]` | Drop shadow: keys `enabled`, `color`, `offsetX`, `offsetY`, `blur`. The `blur` key is currently parsed but unused (both backends use vector text rendering; blurred shadows would require a separate Gaussian blur pass). |
 | `stroke` | `array` | `['enabled' => false]` | Text outline: keys `enabled`, `color`, `width`. Requires a TTF font on GD; on Imagick, built-in fonts don't stroke reliably — pass a TTF for consistent results. |
 | `background` | `array` | `['enabled' => false]` | Text background pill: keys `enabled`, `color`, `padding`, `alpha`. Drawn once around the full multi-line block. |
@@ -507,14 +544,14 @@ Convenience wrappers around the platform-native `imageFilter()` — all availabl
 
 | Method | Underlying GD constant | Underlying Imagick method |
 |--------|------------------------|----------------------------|
-| `grayscale(): self` | `IMG_FILTER_GRAYSCALE` | `setImageColorspace(GRAY)` |
+| `grayscale(): self` | `IMG_FILTER_GRAYSCALE` | `modulateImage(100, 0, 100)` |
 | `brightness(int $level): self` | `IMG_FILTER_BRIGHTNESS` | `modulateImage(100+$level, 100, 100)` |
 | `contrast(int $level): self` | `IMG_FILTER_CONTRAST` | `contrastImage($level)` |
 | `blur(int\|float $amount = 1): self` | `IMG_FILTER_GAUSSIAN_BLUR` | `gaussianBlurImage(0, $amount)` |
 | `pixelate(int $blockSize = 10): self` | `IMG_FILTER_PIXELATE` | scale down + scale up |
 | `edgeDetect(): self` | `IMG_FILTER_EDGEDETECT` | `edgeImage(1)` |
 | `emboss(): self` | `IMG_FILTER_EMBOSS` | `embossImage(0, 1)` |
-| `smooth(int $level = 1): self` | `IMG_FILTER_SMOOTH` | `gaussianBlurImage($level, 1)` |
+| `smooth(int $level = 1): self` | `IMG_FILTER_SMOOTH` | `gaussianBlurImage(max(0.5, $level), 1)` |
 
 ```php
 // Muted preview: desaturate + soften
@@ -526,7 +563,13 @@ $thumb->pixelate(8);
 // Dramatic edge-detected poster
 $thumb->edgeDetect()->contrast(-20);
 ```
-For backend-specific magic (e.g. Imagick's `sepiaToneImage`, GD's `IMG_FILTER_MEAN_REMOVAL`), use `imageFilter()` directly with the native constant.
+For backend-specific magic, use the native constant on **GD** (`IMG_FILTER_MEAN_REMOVAL`, `IMG_FILTER_SELECTIVE_BLUR`, `IMG_FILTER_COLORIZE`, …).
+
+The Imagick backend's `imageFilter()` covers only the spatial-filter family listed above. For anything else — `sepiaToneImage()`, `cannyEdgeImage()`, `posterizeImage()` — reach the underlying `Imagick` object through `getOldImage()`:
+
+```php
+$thumb->getOldImage()->sepiaToneImage(80);
+```
 
 ### Output
 
@@ -939,10 +982,15 @@ $thumb->resize(800, 0)->save('photo.jpg', 'JPEG');
     ->pad(1000, 1000, [255, 255, 255])
     ->save('rotated-padded.png', 'PNG');
 
-// Imagick: grayscale via Imagick's own filter constant
+// Imagick: grayscale via the chainable wrapper (works on both backends)
 (new PHPThumb\Imagick('photo.jpg'))
-    ->imageFilter(\Imagick::FILTER_GRAYSCALE)
+    ->grayscale()
     ->save('grayscale.jpg');
+
+// Imagick: a raw spatial filter via PHPThumb's own constants
+(new PHPThumb\Imagick('photo.jpg'))
+    ->imageFilter(\PHPThumb\Imagick::FILTER_SOBEL)
+    ->save('edges.jpg');
 
 // Imagick: text caption with TTF font and stroke
 (new PHPThumb\Imagick('photo.jpg'))
@@ -1039,6 +1087,12 @@ Run only the Imagick tests:
 
 ```bash
 ./vendor/bin/phpunit --testsuite=Imagick
+```
+
+Run only the backend-agnostic tests (the abstract `PHPThumb` base class — useful on a host with neither extension installed):
+
+```bash
+./vendor/bin/phpunit --testsuite=Core
 ```
 
 Imagick tests skip automatically if `ext-imagick` is not loaded.
