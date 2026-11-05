@@ -2856,7 +2856,7 @@ class Imagick extends PHPThumb
 			'heic'             => 'image/heic',
 			'heif'             => 'image/heif',
 			'jpeg', 'jpg', 'jpe' => 'image/jpeg',
-			'jxl'              => 'image/jxl',
+			'jxl', 'jpegxl'    => 'image/jxl',
 			'png'              => 'image/png',
 			'tif', 'tiff'      => 'image/tiff',
 			'webp'             => 'image/webp',
