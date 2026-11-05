@@ -106,6 +106,14 @@ abstract class PHPThumb
 	 */
 	protected array $plugins;
 
+	/**
+	 * Whether the plugin stack has already been executed for this instance.
+	 *
+	 * @var bool
+	 */
+	protected bool $plugins_executed = false;
+
+
 	public function __construct(string $file_name, array $options = [], array $plugins = [])
 	{
 		$this->file_name	= $file_name;
@@ -186,6 +194,35 @@ abstract class PHPThumb
 	public function getIsRemoteImage(): bool
 	{
 		return $this->remote_image;
+	}
+
+	/**
+	 * Executes the attached plugin stack.
+	 *
+	 * The stack is executed at most once per instance. `show()` and
+	 * `save()` both route through this method, so a caller who produces
+	 * both a streamed and a written image still ends up with a singly
+	 * plugged image: whichever call comes first applies the plugins to the
+	 * in-memory image, and the second call writes or streams that
+	 * already-plugged image. Without the guard a watermark would be
+	 * composited twice.
+	 *
+	 * The flag is set *before* the plugins run, so a plugin that throws
+	 * cannot cause the stack to be re-applied on a later call.
+	 */
+	protected function executePlugins(): void
+	{
+		if ($this->plugins_executed)
+		{
+			return;
+		}
+
+		$this->plugins_executed = true;
+
+		foreach ($this->plugins as $plugin)
+		{
+			$plugin->execute($this);
+		}
 	}
 
 	#################################

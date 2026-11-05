@@ -1072,27 +1072,40 @@ class Imagick extends PHPThumb
 
 		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
 
+		// The thumbnail has already changed the image's geometry, so the
+		// crop rectangle must be derived from the NEW dimensions. Using
+		// the pre-thumbnail dimensions puts the crop outside the image,
+		// which ImageMagick reduces to a 1x1 result.
+		$resized_width  = $this->old_image->getImageWidth();
+		$resized_height = $this->old_image->getImageHeight();
+
 		$this->checkingMaxSize($width, $height);
 
-		$crop_width  = $this->max_width;
-		$crop_height = $this->max_height;
+		// Clamp the crop to the image so a rounding edge case can never
+		// push the rectangle out of bounds again.
+		$crop_width  = min($this->max_width,  $resized_width);
+		$crop_height = min($this->max_height, $resized_height);
 		$crop_x      = 0;
 		$crop_y      = 0;
 
-		if ($this->current_dimensions['width'] > $this->max_width)
+		if ($resized_width > $crop_width)
 		{
-			$crop_x = intval(($this->current_dimensions['width'] - $this->max_width) / 2);
+			$crop_x = intval(($resized_width - $crop_width) / 2);
 		}
-		else if ($this->current_dimensions['height'] > $this->max_height)
+		else if ($resized_height > $crop_height)
 		{
-			$crop_y = intval(($this->current_dimensions['height'] - $this->max_height) / 2);
+			$crop_y = intval(($resized_height - $crop_height) / 2);
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
 		$this->resetImagePage();
 
-		$this->current_dimensions['width']  = $crop_width;
-		$this->current_dimensions['height'] = $crop_height;
+		// Report the geometry the image actually has, not the geometry
+		// that was requested.
+		$this->current_dimensions = [
+			'width'  => $this->old_image->getImageWidth(),
+			'height' => $this->old_image->getImageHeight(),
+		];
 
 		return $this;
 	}
@@ -1107,11 +1120,6 @@ class Imagick extends PHPThumb
 			throw new InvalidArgumentException('$width must be numeric and greater than zero');
 		}
 
-		if ($height == 0)
-		{
-			throw new InvalidArgumentException('$height must be numeric and greater than zero');
-		}
-
 		$this->checkingMaxSize($width, $height);
 		$this->calcImageSizeStrict($this->current_dimensions['width'], $this->current_dimensions['height']);
 
@@ -1120,10 +1128,13 @@ class Imagick extends PHPThumb
 
 		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
 
+		$resized_width  = $this->old_image->getImageWidth();
+		$resized_height = $this->old_image->getImageHeight();
+
 		$this->checkingMaxSize($width, $height);
 
-		$crop_width  = $this->max_width;
-		$crop_height = $this->max_height;
+		$crop_width  = min($this->max_width,  $resized_width);
+		$crop_height = min($this->max_height, $resized_height);
 		$crop_x      = 0;
 		$crop_y      = 0;
 
@@ -1136,22 +1147,24 @@ class Imagick extends PHPThumb
 			$percent = 1;
 		}
 
-		if ($this->current_dimensions['width'] > $this->max_width)
+		if ($resized_width > $crop_width)
 		{
-			$max_crop_x = $this->current_dimensions['width'] - $this->max_width;
-			$crop_x = intval(($percent / 100) * $max_crop_x);
+			$max_crop_x = $resized_width - $crop_width;
+			$crop_x     = intval(($percent / 100) * $max_crop_x);
 		}
-		else if ($this->current_dimensions['height'] > $this->max_height)
+		else if ($resized_height > $crop_height)
 		{
-			$max_crop_y = $this->current_dimensions['height'] - $this->max_height;
-			$crop_y = intval(($percent / 100) * $max_crop_y);
+			$max_crop_y = $resized_height - $crop_height;
+			$crop_y     = intval(($percent / 100) * $max_crop_y);
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
 		$this->resetImagePage();
 
-		$this->current_dimensions['width']  = $crop_width;
-		$this->current_dimensions['height'] = $crop_height;
+		$this->current_dimensions = [
+			'width'  => $this->old_image->getImageWidth(),
+			'height' => $this->old_image->getImageHeight(),
+		];
 
 		return $this;
 	}
@@ -1166,11 +1179,6 @@ class Imagick extends PHPThumb
 			throw new InvalidArgumentException('$width must be numeric and greater than zero');
 		}
 
-		if ($height == 0)
-		{
-			throw new InvalidArgumentException('$height must be numeric and greater than zero');
-		}
-
 		$this->checkingMaxSize($width, $height);
 		$this->calcImageSizeStrict($this->current_dimensions['width'], $this->current_dimensions['height']);
 
@@ -1179,35 +1187,40 @@ class Imagick extends PHPThumb
 
 		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
 
+		$resized_width  = $this->old_image->getImageWidth();
+		$resized_height = $this->old_image->getImageHeight();
+
 		$this->checkingMaxSize($width, $height);
 
-		$crop_width  = $this->max_width;
-		$crop_height = $this->max_height;
+		$crop_width  = min($this->max_width,  $resized_width);
+		$crop_height = min($this->max_height, $resized_height);
 		$crop_x      = 0;
 		$crop_y      = 0;
 
-		if ($this->current_dimensions['width'] > $this->max_width)
+		if ($resized_width > $crop_width)
 		{
 			$crop_x = match ($quadrant) {
 				'L'     => 0,
-				'R'     => intval(($this->current_dimensions['width'] - $this->max_width)),
-				default => intval(($this->current_dimensions['width'] - $this->max_width) / 2),
+				'R'     => intval($resized_width - $crop_width),
+				default => intval(($resized_width - $crop_width) / 2),
 			};
 		}
-		else if ($this->current_dimensions['height'] > $this->max_height)
+		else if ($resized_height > $crop_height)
 		{
 			$crop_y = match ($quadrant) {
 				'T'     => 0,
-				'B'     => intval(($this->current_dimensions['height'] - $this->max_height)),
-				default => intval(($this->current_dimensions['height'] - $this->max_height) / 2),
+				'B'     => intval($resized_height - $crop_height),
+				default => intval(($resized_height - $crop_height) / 2),
 			};
 		}
 
 		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
 		$this->resetImagePage();
 
-		$this->current_dimensions['width']  = $crop_width;
-		$this->current_dimensions['height'] = $crop_height;
+		$this->current_dimensions = [
+			'width'  => $this->old_image->getImageWidth(),
+			'height' => $this->old_image->getImageHeight(),
+		];
 
 		return $this;
 	}
@@ -2254,13 +2267,8 @@ class Imagick extends PHPThumb
 	 */
 	public function show(bool $raw_data = false): Imagick
 	{
-		if ($this->plugins)
-		{
-			foreach ($this->plugins as $plugin)
-			{
-				$plugin->execute($this);
-			}
-		}
+		// Execute any plugins
+		$this->executePlugins();
 
 		if (headers_sent() && php_sapi_name() != 'cli')
 		{
@@ -2296,6 +2304,9 @@ class Imagick extends PHPThumb
 	 */
 	public function getImageAsString(): string
 	{
+		// Execute any plugins
+		$this->executePlugins();
+
 		return $this->old_image->getImagesBlob();
 	}
 
@@ -2304,6 +2315,9 @@ class Imagick extends PHPThumb
 	 */
 	public function save(string $file_name, ?string $format = null): Imagick
 	{
+		// Execute any plugins
+		$this->executePlugins();
+
 		$format = ($format !== null)
 			? self::normalizeFormatName($format)
 			: self::normalizeFormatName($this->format);

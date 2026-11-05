@@ -125,4 +125,79 @@ class ImagickPluginTest extends TestCase
 
 		self::assertTrue(true); // reached without exception
 	}
+
+	public function testPluginsAreExecutedWhenSaving(): void
+	{
+		$plugin = new class implements PluginInterface {
+			public function execute(PHPThumb $phpthumb): PHPThumb
+			{
+				$phpthumb->adaptiveResize(50, 50);
+				return $phpthumb;
+			}
+		};
+
+		$tempFile = __DIR__ . '/../../resources/imagick_plugin_save.png';
+
+		try {
+			$thumb = new Imagick(
+				__DIR__ . '/../../resources/test.jpg',
+				[],
+				[$plugin]
+				);
+
+			$thumb->save($tempFile, 'PNG');
+
+			self::assertFileExists($tempFile);
+
+			$reloaded = new Imagick($tempFile);
+			self::assertSame(50, $reloaded->getCurrentDimensions()['width']);
+			self::assertSame(50, $reloaded->getCurrentDimensions()['height']);
+		} finally {
+			if (is_file($tempFile)) {
+				unlink($tempFile);
+			}
+		}
+	}
+
+	public function testPluginsAreExecutedOnlyOnceAcrossShowAndSave(): void
+	{
+		$calls = 0;
+
+		$plugin = new class($calls) implements PluginInterface {
+			private int $calls;
+
+			public function __construct(int &$calls)
+			{
+				$this->calls = &$calls;
+			}
+
+			public function execute(PHPThumb $phpthumb): PHPThumb
+			{
+				$this->calls++;
+				return $phpthumb;
+			}
+		};
+
+		$thumb = new Imagick(
+			__DIR__ . '/../../resources/test.jpg',
+			[],
+			[$plugin]
+			);
+
+		ob_start();
+		$thumb->show(true);
+		ob_end_clean();
+
+		$tempFile = __DIR__ . '/../../resources/imagick_plugin_show_save.png';
+
+		try {
+			$thumb->save($tempFile, 'PNG');
+		} finally {
+			if (is_file($tempFile)) {
+				unlink($tempFile);
+			}
+		}
+
+		self::assertSame(1, $calls);
+	}
 }

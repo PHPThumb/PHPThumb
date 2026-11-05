@@ -107,6 +107,69 @@ class ImagickOperationsTest extends TestCase
 		self::assertSame(200, $this->thumb->getCurrentDimensions()['height']);
 	}
 
+	/**
+	 * The crop rectangle must be derived from the post-thumbnail geometry.
+	 * Using the pre-thumbnail geometry placed the crop outside the image,
+	 * which ImageMagick silently reduced to a 1x1 result — while
+	 * current_dimensions kept reporting the requested size.
+	 */
+	public function testAdaptiveResizeProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResize(400, 200);
+
+		self::assertSame(400, $this->thumb->getOldImage()->getImageWidth());
+		self::assertSame(200, $this->thumb->getOldImage()->getImageHeight());
+	}
+
+	public function testAdaptiveResizeReportedDimensionsMatchTheActualImage(): void
+	{
+		$this->thumb->adaptiveResize(200, 200);
+
+		self::assertSame(
+			$this->thumb->getOldImage()->getImageWidth(),
+			$this->thumb->getCurrentDimensions()['width']
+			);
+		self::assertSame(
+			$this->thumb->getOldImage()->getImageHeight(),
+			$this->thumb->getCurrentDimensions()['height']
+			);
+	}
+
+	public function testAdaptiveResizeSurvivesASaveRoundTrip(): void
+	{
+		$tempFile = __DIR__ . '/../../resources/imagick_adaptive_resize.png';
+
+		try {
+			$this->thumb->adaptiveResize(400, 200);
+			$this->thumb->save($tempFile, 'PNG');
+
+			$reloaded = new Imagick($tempFile);
+
+			self::assertSame(400, $reloaded->getCurrentDimensions()['width']);
+			self::assertSame(200, $reloaded->getCurrentDimensions()['height']);
+		} finally {
+			if (is_file($tempFile)) {
+				unlink($tempFile);
+			}
+		}
+	}
+
+	public function testAdaptiveResizePercentProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResizePercent(400, 200, 25);
+
+		self::assertSame(400, $this->thumb->getOldImage()->getImageWidth());
+		self::assertSame(200, $this->thumb->getOldImage()->getImageHeight());
+	}
+
+	public function testAdaptiveResizeQuadrantProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResizeQuadrant(400, 200, 'C');
+
+		self::assertSame(400, $this->thumb->getOldImage()->getImageWidth());
+		self::assertSame(200, $this->thumb->getOldImage()->getImageHeight());
+	}
+
 	public function testResizePercent()
 	{
 		$this->thumb->resizePercent(50);

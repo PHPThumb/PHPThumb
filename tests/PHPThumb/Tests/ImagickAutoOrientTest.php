@@ -79,15 +79,55 @@ class ImagickAutoOrientTest extends TestCase
         self::assertSame(200, $this->thumb->getCurrentDimensions()['width']);
     }
 
+    /**
+     * Uses a genuinely tagged fixture: the previous version used a JPEG
+     * with no EXIF at all, so the assertion was vacuous.
+     */
     public function testAutoOrientIsIdempotent(): void
     {
-        $this->thumb->autoOrient();
-        $w = $this->thumb->getCurrentDimensions()['width'];
-        $h = $this->thumb->getCurrentDimensions()['height'];
+    	$fixture = $this->resolveExifFixture();
 
-        $this->thumb->autoOrient();
+    	if ($fixture === null) {
+    		$this->markTestSkipped(
+    			'No usable EXIF fixture could be produced — ext-gd is required'
+    			);
+    	}
 
-        self::assertSame($w, $this->thumb->getCurrentDimensions()['width']);
-        self::assertSame($h, $this->thumb->getCurrentDimensions()['height']);
+    	$img = new \PHPThumb\Imagick($fixture);
+
+    	$img->autoOrient();
+
+    	$w = $img->getCurrentDimensions()['width'];
+    	$h = $img->getCurrentDimensions()['height'];
+
+    	self::assertSame(200, $w);
+    	self::assertSame(400, $h);
+
+    	$img->autoOrient();
+
+    	self::assertSame($w, $img->getCurrentDimensions()['width']);
+    	self::assertSame($h, $img->getCurrentDimensions()['height']);
+    }
+
+    private function resolveExifFixture(): ?string
+    {
+    	require_once __DIR__ . '/../../resources/exif_writer.php';
+
+    	$fixture = __DIR__ . '/../../resources/exif_orientation.jpg';
+
+    	if (file_exists($fixture) && \ExifFixtureWriter::orientation($fixture) === 6) {
+    		return $fixture;
+    	}
+
+    	$path = sys_get_temp_dir()
+    	. '/phpthumb_exif_orientation_' . getmypid() . '.jpg';
+
+    	try {
+    		\ExifFixtureWriter::write($path, 6);
+    	} catch (\Throwable $e) {
+    		return null;
+    	}
+
+    	return $path;
     }
 }

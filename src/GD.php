@@ -72,6 +72,20 @@ class GD extends PHPThumb
 	protected int $percent;
 
 	/**
+	 * Whether autoOrient() has already been applied to this instance.
+	 *
+	 * The EXIF orientation tag lives in the source file, not in the
+	 * in-memory image. Once the pixels have been rotated, the file on disk
+	 * still carries the original tag, so re-reading it would rotate the
+	 * already-rotated image a second time. This flag makes the operation
+	 * idempotent, matching the Imagick backend (where Imagick::autoOrient()
+	 * resets the tag to TOPLEFT as a side effect).
+	 *
+	 * @var bool
+	 */
+	protected bool $auto_oriented = false;
+
+	/**
 	 * @throws Exception
 	 */
 	public function __construct(string $file_name, array $options = [], array $plugins = [])
@@ -1658,6 +1672,13 @@ class GD extends PHPThumb
 	 */
 	public function autoOrient(): GD
 	{
+		// Already applied — the source file still carries the original
+		// orientation tag, so re-reading it would rotate twice.
+		if ($this->auto_oriented)
+		{
+			return $this;
+		}
+
 		// Graceful no-op when EXIF extension isn't available.
 		if (!function_exists('exif_read_data'))
 		{
@@ -1673,17 +1694,15 @@ class GD extends PHPThumb
 
 		$exif = @exif_read_data($this->file_name, 'IFD0', false, false);
 
-		if (!is_array($exif) || !isset($exif['Orientation']))
+		$orientation = $this->extractOrientation($exif);
+
+		if ($orientation === null || $orientation === 1 || $orientation < 1 || $orientation > 8)
 		{
 			return $this;
 		}
 
-		$orientation = (int) $exif['Orientation'];
-
-		if ($orientation === 1 || $orientation < 1 || $orientation > 8)
-		{
-			return $this;
-		}
+		// The pixels are about to change — mark it so a second call is a no-op.
+		$this->auto_oriented = true;
 
 		switch ($orientation)
 		{
@@ -1719,6 +1738,38 @@ class GD extends PHPThumb
 		}
 
 		return $this;
+	}
+
+	/**
+	 * Pulls the Orientation tag out of the array returned by exif_read_data().
+	 *
+	 * exif_read_data() returns a flat array when no section filter is
+	 * supplied, but the shape differs between PHP builds when a section
+	 * filter *is* used — some return the IFD0 entries flat, others nest
+	 * them under an 'IFD0' key. Both layouts are accepted so the lookup
+	 * does not depend on the PHP version.
+	 *
+	 * @param mixed $exif The raw return value of exif_read_data().
+	 * @return int|null The orientation value, or null when it is absent.
+	 */
+	protected function extractOrientation($exif): ?int
+	{
+		if (!is_array($exif))
+		{
+			return null;
+		}
+
+		if (isset($exif['Orientation']))
+		{
+			return (int) $exif['Orientation'];
+		}
+
+		if (isset($exif['IFD0']['Orientation']))
+		{
+			return (int) $exif['IFD0']['Orientation'];
+		}
+
+		return null;
 	}
 
 	/**
@@ -2003,15 +2054,8 @@ class GD extends PHPThumb
 	 */
 	public function show(bool $raw_data = false): GD
 	{
-		//Execute any plugins
-		if ($this->plugins)
-		{
-			foreach ($this->plugins as $plugin)
-			{
-				/* @var $plugin PluginInterface */
-				$plugin->execute($this);
-			}
-		}
+		// Execute any plugins
+		$this->executePlugins();
 
 		if (headers_sent() && php_sapi_name() != 'cli')
 		{
@@ -2101,6 +2145,9 @@ class GD extends PHPThumb
 	 */
 	public function save(string $file_name, ?string $format = null): GD
 	{
+		// Execute any plugins
+		$this->executePlugins();
+
 		$valid_formats	= ['AVIF', 'GIF', 'JPEG', 'JPG', 'PNG', 'WEBP'];
 		$format			= ($format !== null) ? strtoupper($format) : $this->format;
 
