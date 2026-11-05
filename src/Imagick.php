@@ -1445,21 +1445,24 @@ class Imagick extends PHPThumb
 	 *  - $amount = 50  → sigma ~1.0 (default)
 	 *  - $amount = 100 → sigma ~2.0 (strongest)
 	 *
+	 * When $amount is null the 'sharpenAmount' option is used, so the
+	 * default strength can be configured per instance:
+	 *
+	 *     $thumb->setOptions(['sharpenAmount' => 80]);
+	 *     $thumb->sharpen();   // sharpens at 80
+	 *
 	 * Dimensions are unchanged.
 	 *
-	 * @param int $amount Sharpening strength, 0–100.
+	 * @param int|null $amount Sharpening strength, 0–100, or null to use the
+	 *                          'sharpenAmount' option (default 50).
 	 * @return $this
 	 *
-	 * @throws InvalidArgumentException For out-of-range amounts.
+	 * @throws InvalidArgumentException For out-of-range amounts, or an
+	 *                                  out-of-range 'sharpenAmount' option.
 	 */
-	public function sharpen(int $amount = 50): Imagick
+	public function sharpen(?int $amount = null): Imagick
 	{
-		if ($amount < 0 || $amount > 100)
-		{
-			throw new InvalidArgumentException(
-				'sharpen() $amount must be between 0 and 100, got: ' . $amount
-				);
-		}
+		$amount = $this->resolveSharpenAmount($amount);
 
 		if ($amount === 0)
 		{

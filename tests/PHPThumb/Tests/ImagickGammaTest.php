@@ -160,4 +160,83 @@ class ImagickGammaTest extends TestCase
         self::assertInstanceOf(Imagick::class, $result);
         self::assertSame(200, $this->thumb->getCurrentDimensions()['width']);
     }
+
+    // ---------------- sharpen() + the sharpenAmount option ----------------
+
+    public function testSharpenWithoutAnArgumentUsesTheSharpenAmountOption(): void
+    {
+    	$viaOption = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$viaOption->setOptions(['sharpenAmount' => 70]);
+    	$viaOption->sharpen();
+
+    	$viaArgument = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$viaArgument->sharpen(70);
+
+    	self::assertSame(
+    		$this->imageHash($viaOption->getOldImage()),
+    		$this->imageHash($viaArgument->getOldImage()),
+    		'sharpen() must use the sharpenAmount option when no argument is given'
+    		);
+    }
+
+    public function testAnExplicitAmountOverridesTheSharpenAmountOption(): void
+    {
+    	$withOption = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$withOption->setOptions(['sharpenAmount' => 100]);
+    	$withOption->sharpen(10);
+
+    	$withoutOption = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$withoutOption->sharpen(10);
+
+    	self::assertSame(
+    		$this->imageHash($withOption->getOldImage()),
+    		$this->imageHash($withoutOption->getOldImage()),
+    		'an explicit amount must win over the sharpenAmount option'
+    		);
+    }
+
+    public function testSharpenAmountOptionOfZeroMakesSharpenANoOp(): void
+    {
+    	$thumb = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$thumb->setOptions(['sharpenAmount' => 0]);
+
+    	$before = $thumb->getOldImage()->getImagePixelColor(250, 187)->getColor();
+    	$thumb->sharpen();
+    	$after = $thumb->getOldImage()->getImagePixelColor(250, 187)->getColor();
+
+    	self::assertSame((int) $before['r'], (int) $after['r']);
+    	self::assertSame((int) $before['g'], (int) $after['g']);
+    	self::assertSame((int) $before['b'], (int) $after['b']);
+    }
+
+    public function testAnOutOfRangeSharpenAmountOptionThrows(): void
+    {
+    	$thumb = new Imagick(__DIR__ . '/../../resources/test.jpg');
+    	$thumb->setOptions(['sharpenAmount' => 150]);
+
+    	$this->expectException(InvalidArgumentException::class);
+    	$this->expectExceptionMessage('sharpenAmount');
+
+    	$thumb->sharpen();
+    }
+
+    /**
+     * Hashes the raw pixel buffer of an Imagick image so two renders can
+     * be compared byte-for-byte.
+     */
+    private function imageHash(\Imagick $im): string
+    {
+    	$w = $im->getImageWidth();
+    	$h = $im->getImageHeight();
+
+    	$pixels = $im->exportImagePixels(
+    		0, 0, $w, $h, 'RGB', \Imagick::PIXEL_CHAR
+    		);
+
+    	if (is_string($pixels)) {
+    		return md5($pixels);
+    	}
+
+    	return md5(implode(',', array_map('intval', (array) $pixels)));
+    }
 }

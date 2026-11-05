@@ -191,6 +191,28 @@ class GDGammaTest extends TestCase
     }
 
     /**
+     * Hashes every pixel of a GD image so two renders can be compared
+     * byte-for-byte.
+     */
+    private function imageHash(\GdImage $im): string
+    {
+    	$bytes = '';
+    	$w = imagesx($im);
+    	$h = imagesy($im);
+
+    	for ($y = 0; $y < $h; $y++) {
+    		for ($x = 0; $x < $w; $x++) {
+    			$rgb = imagecolorat($im, $x, $y);
+    			$bytes .= chr(($rgb >> 16) & 0xFF)
+    			. chr(($rgb >> 8) & 0xFF)
+    			. chr($rgb & 0xFF);
+    		}
+    	}
+
+    	return md5($bytes);
+    }
+
+    /**
      * Core regression test: sharpening a uniform-color image must not change
      * the color of any pixel (only edges should respond to the kernel).
      */
@@ -296,5 +318,62 @@ class GDGammaTest extends TestCase
     	self::assertEqualsWithDelta(100, $rightR, 2, 'right flat region must stay at fixture value');
     	self::assertEqualsWithDelta(100, $rightG, 2, 'right flat region must stay at fixture value');
     	self::assertEqualsWithDelta(100, $rightB, 2, 'right flat region must stay at fixture value');
+    }
+
+    // ---------------- sharpen() + the sharpenAmount option ----------------
+
+    public function testSharpenWithoutAnArgumentUsesTheSharpenAmountOption(): void
+    {
+    	$viaOption = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$viaOption->setOptions(['sharpenAmount' => 70]);
+    	$viaOption->sharpen();
+
+    	$viaArgument = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$viaArgument->sharpen(70);
+
+    	self::assertSame(
+    		$this->imageHash($viaOption->getOldImage()),
+    		$this->imageHash($viaArgument->getOldImage()),
+    		'sharpen() must use the sharpenAmount option when no argument is given'
+    		);
+    }
+
+    public function testAnExplicitAmountOverridesTheSharpenAmountOption(): void
+    {
+    	$withOption = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$withOption->setOptions(['sharpenAmount' => 100]);
+    	$withOption->sharpen(10);
+
+    	$withoutOption = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$withoutOption->sharpen(10);
+
+    	self::assertSame(
+    		$this->imageHash($withOption->getOldImage()),
+    		$this->imageHash($withoutOption->getOldImage()),
+    		'an explicit amount must win over the sharpenAmount option'
+    		);
+    }
+
+    public function testSharpenAmountOptionOfZeroMakesSharpenANoOp(): void
+    {
+    	$thumb = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$thumb->setOptions(['sharpenAmount' => 0]);
+
+    	$before = imagecolorat($thumb->getOldImage(), 250, 187);
+    	$thumb->sharpen();
+    	$after = imagecolorat($thumb->getOldImage(), 250, 187);
+
+    	self::assertSame($before, $after);
+    }
+
+    public function testAnOutOfRangeSharpenAmountOptionThrows(): void
+    {
+    	$thumb = new GD(__DIR__ . '/../../resources/test.jpg');
+    	$thumb->setOptions(['sharpenAmount' => 150]);
+
+    	$this->expectException(InvalidArgumentException::class);
+    	$this->expectExceptionMessage('sharpenAmount');
+
+    	$thumb->sharpen();
     }
 }

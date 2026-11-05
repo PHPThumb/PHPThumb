@@ -197,6 +197,49 @@ abstract class PHPThumb
 	}
 
 	/**
+	 * Resolves the sharpening strength used by sharpen().
+	 *
+	 * A null $amount means "not supplied" — the 'sharpenAmount' option is
+	 * used instead. The option defaults to 50, so sharpen() with no
+	 * argument behaves exactly as it did before the option became
+	 * meaningful.
+	 *
+	 * An explicit 0 is honoured as a no-op, which is why the "not
+	 * supplied" case is signalled with null rather than with 0.
+	 *
+	 * @param int|null $amount The caller-supplied strength, or null.
+	 * @return int The resolved strength, in the range 0–100.
+	 *
+	 * @throws InvalidArgumentException If the supplied amount — or the
+	 *                                  'sharpenAmount' option — is out of range.
+	 */
+	protected function resolveSharpenAmount(?int $amount): int
+	{
+		if ($amount !== null)
+		{
+			if ($amount < 0 || $amount > 100)
+			{
+				throw new InvalidArgumentException(
+					'sharpen() $amount must be between 0 and 100, got: ' . $amount
+					);
+			}
+
+			return $amount;
+		}
+
+		$configured = (int) ($this->options['sharpenAmount'] ?? 50);
+
+		if ($configured < 0 || $configured > 100)
+		{
+			throw new InvalidArgumentException(
+				"The 'sharpenAmount' option must be between 0 and 100, got: " . $configured
+				);
+		}
+
+		return $configured;
+	}
+
+	/**
 	 * Executes the attached plugin stack.
 	 *
 	 * The stack is executed at most once per instance. `show()` and

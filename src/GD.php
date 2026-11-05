@@ -1815,22 +1815,25 @@ class GD extends PHPThumb
 	 *  - $amount = 50  → moderate sharpening (default)
 	 *  - $amount = 100 → strongest sharpening
 	 *
+	 * When $amount is null the 'sharpenAmount' option is used, so the
+	 * default strength can be configured per instance:
+	 *
+	 *     $thumb->setOptions(['sharpenAmount' => 80]);
+	 *     $thumb->sharpen();   // sharpens at 80
+	 *
 	 * Dimensions are unchanged. Alpha is preserved.
 	 *
-	 * @param int $amount Sharpening strength, 0–100.
+	 * @param int|null $amount Sharpening strength, 0–100, or null to use the
+	 *                          'sharpenAmount' option (default 50).
 	 * @return $this
 	 *
 	 * @throws RuntimeException If the GD build does not have imageconvolution() available.
-	 * @throws InvalidArgumentException For out-of-range amounts.
+	 * @throws InvalidArgumentException For out-of-range amounts, or an
+	 *                                  out-of-range 'sharpenAmount' option.
 	 */
-	public function sharpen(int $amount = 50): GD
+	public function sharpen(?int $amount = null): GD
 	{
-		if ($amount < 0 || $amount > 100)
-		{
-			throw new InvalidArgumentException(
-				'sharpen() $amount must be between 0 and 100, got: ' . $amount
-				);
-		}
+		$amount = $this->resolveSharpenAmount($amount);
 
 		if ($amount === 0)
 		{
@@ -1845,8 +1848,6 @@ class GD extends PHPThumb
 		}
 
 		// Map $amount (0..100) → bias (0..1): 0 = neutral, 1 = max contrast.
-		// The 3x3 high-pass kernel produces an unsharp-mask-like effect when
-		// the central weight is biased toward "amount".
 		//
 		// For a 3x3 kernel of all -1 with center c, the sum of all weights
 		// is c - 8. imageconvolution() divides by the divisor argument, so
