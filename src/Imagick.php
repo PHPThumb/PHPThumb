@@ -1070,41 +1070,24 @@ class Imagick extends PHPThumb
 		$resize_width  = $this->new_dimensions['new_width'];
 		$resize_height = $this->new_dimensions['new_height'];
 
-		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
-
-		// The thumbnail has already changed the image's geometry, so the
-		// crop rectangle must be derived from the NEW dimensions. Using
-		// the pre-thumbnail dimensions puts the crop outside the image,
-		// which ImageMagick reduces to a 1x1 result.
-		$resized_width  = $this->old_image->getImageWidth();
-		$resized_height = $this->old_image->getImageHeight();
+		$this->old_image->thumbnailImage(
+			$resize_width,
+			$resize_height,
+			false
+		);
 
 		$this->checkingMaxSize($width, $height);
 
-		// Clamp the crop to the image so a rounding edge case can never
-		// push the rectangle out of bounds again.
-		$crop_width  = min($this->max_width,  $resized_width);
-		$crop_height = min($this->max_height, $resized_height);
-		$crop_x      = 0;
-		$crop_y      = 0;
+		// The crop rectangle is derived from the geometry of the resized
+		// image, not from the geometry it had before the thumbnail.
+		[$crop_width, $crop_height] = $this->applyAdaptiveCrop(
+			$this->max_width,
+			$this->max_height
+		);
 
-		if ($resized_width > $crop_width)
-		{
-			$crop_x = intval(($resized_width - $crop_width) / 2);
-		}
-		else if ($resized_height > $crop_height)
-		{
-			$crop_y = intval(($resized_height - $crop_height) / 2);
-		}
-
-		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
-		$this->resetImagePage();
-
-		// Report the geometry the image actually has, not the geometry
-		// that was requested.
 		$this->current_dimensions = [
-			'width'  => $this->old_image->getImageWidth(),
-			'height' => $this->old_image->getImageHeight(),
+			'width'  => $crop_width,
+			'height' => $crop_height,
 		];
 
 		return $this;
@@ -1128,15 +1111,7 @@ class Imagick extends PHPThumb
 
 		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
 
-		$resized_width  = $this->old_image->getImageWidth();
-		$resized_height = $this->old_image->getImageHeight();
-
 		$this->checkingMaxSize($width, $height);
-
-		$crop_width  = min($this->max_width,  $resized_width);
-		$crop_height = min($this->max_height, $resized_height);
-		$crop_x      = 0;
-		$crop_y      = 0;
 
 		if ($percent > 100)
 		{
@@ -1147,23 +1122,16 @@ class Imagick extends PHPThumb
 			$percent = 1;
 		}
 
-		if ($resized_width > $crop_width)
-		{
-			$max_crop_x = $resized_width - $crop_width;
-			$crop_x     = intval(($percent / 100) * $max_crop_x);
-		}
-		else if ($resized_height > $crop_height)
-		{
-			$max_crop_y = $resized_height - $crop_height;
-			$crop_y     = intval(($percent / 100) * $max_crop_y);
-		}
-
-		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
-		$this->resetImagePage();
+		[$crop_width, $crop_height] = $this->applyAdaptiveCrop(
+			$this->max_width,
+			$this->max_height,
+			'percent',
+			$percent
+		);
 
 		$this->current_dimensions = [
-			'width'  => $this->old_image->getImageWidth(),
-			'height' => $this->old_image->getImageHeight(),
+			'width'  => $crop_width,
+			'height' => $crop_height,
 		];
 
 		return $this;
@@ -1187,39 +1155,19 @@ class Imagick extends PHPThumb
 
 		$this->old_image->thumbnailImage($resize_width, $resize_height, false);
 
-		$resized_width  = $this->old_image->getImageWidth();
-		$resized_height = $this->old_image->getImageHeight();
-
 		$this->checkingMaxSize($width, $height);
 
-		$crop_width  = min($this->max_width,  $resized_width);
-		$crop_height = min($this->max_height, $resized_height);
-		$crop_x      = 0;
-		$crop_y      = 0;
-
-		if ($resized_width > $crop_width)
-		{
-			$crop_x = match ($quadrant) {
-				'L'     => 0,
-				'R'     => intval($resized_width - $crop_width),
-				default => intval(($resized_width - $crop_width) / 2),
-			};
-		}
-		else if ($resized_height > $crop_height)
-		{
-			$crop_y = match ($quadrant) {
-				'T'     => 0,
-				'B'     => intval($resized_height - $crop_height),
-				default => intval(($resized_height - $crop_height) / 2),
-			};
-		}
-
-		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
-		$this->resetImagePage();
+		[$crop_width, $crop_height] = $this->applyAdaptiveCrop(
+			$this->max_width,
+			$this->max_height,
+			'quadrant',
+			50,
+			$quadrant
+		);
 
 		$this->current_dimensions = [
-			'width'  => $this->old_image->getImageWidth(),
-			'height' => $this->old_image->getImageHeight(),
+			'width'  => $crop_width,
+			'height' => $crop_height,
 		];
 
 		return $this;
@@ -2539,6 +2487,93 @@ class Imagick extends PHPThumb
 	#################################
 	# ----- UTILITY FUNCTIONS ----- #
 	#################################
+
+	/**
+	 * Crops the working image to the adaptive-resize box.
+	 *
+	 * The crop rectangle is derived from the geometry of the image as it
+	 * exists *now* — i.e. after the thumbnail step — and is clamped to
+	 * that geometry. The previous implementation derived the offsets from
+	 * the pre-thumbnail dimensions, which placed the rectangle outside the
+	 * image; ImageMagick silently reduces such a crop to a 1x1 result.
+	 *
+	 * A max dimension of 0 means "unconstrained": the full extent is kept
+	 * on that axis rather than cropping it to nothing.
+	 *
+	 * thumbnailImage() can land a pixel short of the requested size on
+	 * some builds, so the image is scaled up to the box first when needed
+	 * — otherwise the result would be a pixel smaller than requested.
+	 *
+	 * @param int    $max_width  Target width, or 0 for "unconstrained".
+	 * @param int    $max_height Target height, or 0 for "unconstrained".
+	 * @param string $mode       'center', 'percent' or 'quadrant'.
+	 * @param int    $percent    Position along the overflow axis ('percent' mode).
+	 * @param string $quadrant   Quadrant to crop from ('quadrant' mode).
+	 *
+	 * @return array{0: int, 1: int} The resulting [width, height].
+	 */
+	protected function applyAdaptiveCrop(
+		int $max_width,
+		int $max_height,
+		string $mode = 'center',
+		int $percent = 50,
+		string $quadrant = 'C'
+	): array {
+		$width  = $this->old_image->getImageWidth();
+		$height = $this->old_image->getImageHeight();
+
+		// The target box. A max dimension of 0 leaves that axis alone.
+		$crop_width  = ($max_width  > 0) ? $max_width  : $width;
+		$crop_height = ($max_height > 0) ? $max_height : $height;
+
+		// Make sure the image really does cover the box before cropping.
+		if ($width < $crop_width || $height < $crop_height)
+		{
+			$width  = max($width,  $crop_width);
+			$height = max($height, $crop_height);
+
+			$this->old_image->scaleImage($width, $height);
+		}
+
+		$overflow_x = $width  - $crop_width;
+		$overflow_y = $height - $crop_height;
+
+		$crop_x = 0;
+		$crop_y = 0;
+
+		if ($overflow_x > 0)
+		{
+			$crop_x = match ($mode) {
+				'percent' => intval(($percent / 100) * $overflow_x),
+				'quadrant' => match ($quadrant) {
+				'L'     => 0,
+				'R'     => $overflow_x,
+					default => intval($overflow_x / 2),
+			},
+				default => intval($overflow_x / 2),
+			};
+		}
+		else if ($overflow_y > 0)
+		{
+			$crop_y = match ($mode) {
+				'percent' => intval(($percent / 100) * $overflow_y),
+				'quadrant' => match ($quadrant) {
+				'T'     => 0,
+				'B'     => $overflow_y,
+					default => intval($overflow_y / 2),
+			},
+				default => intval($overflow_y / 2),
+			};
+		}
+
+		$this->old_image->cropImage($crop_width, $crop_height, $crop_x, $crop_y);
+		$this->resetImagePage();
+
+		return [
+			$this->old_image->getImageWidth(),
+			$this->old_image->getImageHeight(),
+		];
+	}
 
 	/**
 	 * Resets the virtual canvas (page) of the working image.

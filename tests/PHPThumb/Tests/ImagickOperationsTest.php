@@ -154,6 +154,26 @@ class ImagickOperationsTest extends TestCase
 		}
 	}
 
+	/**
+	 * A max dimension of 0 means "unconstrained" — the axis must keep its
+	 * full extent rather than being cropped to nothing.
+	 */
+	public function testAdaptiveResizeWithAnUnconstrainedWidth(): void
+	{
+		$this->thumb->adaptiveResize(0, 300);
+
+		self::assertSame(400, $this->thumb->getOldImage()->getImageWidth());
+		self::assertSame(300, $this->thumb->getOldImage()->getImageHeight());
+	}
+
+	public function testAdaptiveResizeWithAnUnconstrainedHeight(): void
+	{
+		$this->thumb->adaptiveResize(300, 0);
+
+		self::assertSame(300, $this->thumb->getOldImage()->getImageWidth());
+		self::assertSame(225, $this->thumb->getOldImage()->getImageHeight());
+	}
+
 	public function testAdaptiveResizePercentProducesAnImageOfTheRequestedSize(): void
 	{
 		$this->thumb->adaptiveResizePercent(400, 200, 25);
@@ -168,6 +188,26 @@ class ImagickOperationsTest extends TestCase
 
 		self::assertSame(400, $this->thumb->getOldImage()->getImageWidth());
 		self::assertSame(200, $this->thumb->getOldImage()->getImageHeight());
+	}
+
+	/**
+	 * The quadrant must actually move the crop: cropping from the top-left
+	 * and from the bottom-right of the same image must yield different
+	 * pixels.
+	 */
+	public function testAdaptiveResizeQuadrantChangesTheCropPosition(): void
+	{
+		$left = new Imagick(__DIR__ . '/../../resources/test.jpg');
+		$left->adaptiveResizeQuadrant(200, 200, 'L');
+
+		$right = new Imagick(__DIR__ . '/../../resources/test.jpg');
+		$right->adaptiveResizeQuadrant(200, 200, 'R');
+
+		self::assertNotSame(
+			md5($this->thumb->getOldImage()->getImageBlob()),
+			md5($right->getOldImage()->getImageBlob()),
+			'the L and R quadrants must produce different crops'
+			);
 	}
 
 	public function testResizePercent()
