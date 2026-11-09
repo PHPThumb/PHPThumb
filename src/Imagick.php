@@ -130,7 +130,17 @@ class Imagick extends PHPThumb
 			// loaded up-front because Imagick is the only component that
 			// knows which format it just decoded - getimagesize()/finfo
 			// only recognise a fraction of the supported formats.
-			$this->old_image->readImage($this->file_name);
+			//
+			// Raw bytes are read through readImageBlob(); a path or URL is
+			// read through readImage().
+			if ($this->raw_image)
+			{
+				$this->old_image->readImageBlob($this->file_name);
+			}
+			else
+			{
+				$this->old_image->readImage($this->file_name);
+			}
 		}
 		catch (\ImagickException $e)
 		{
@@ -1056,7 +1066,9 @@ class Imagick extends PHPThumb
 
 		if ($width == 0)
 		{
-			$width = intval(($height * $this->current_dimensions['width']) / $this->current_dimensions['height']);
+			$width = (int) ceil(
+				($height * $this->current_dimensions['width']) / $this->current_dimensions['height']
+			);
 		}
 
 		if ($height == 0)

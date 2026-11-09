@@ -102,6 +102,14 @@ abstract class PHPThumb
 	protected bool $remote_image;
 
 	/**
+	 * Whether the supplied source was the raw bytes of an image, rather
+	 * than a file path or a URL.
+	 *
+	 * @var bool
+	 */
+	protected bool $raw_image = false;
+
+	/**
 	 * An array of attached plugins to execute in order.
 	 */
 	protected array $plugins;
@@ -133,8 +141,8 @@ abstract class PHPThumb
 
 	/**
 	 * Check the provided filename/url. If it is an url, validate that it is properly
-	 * formatted. If it is a file, check to make sure that it actually exists on
-	 * the filesystem.
+	 * formatted. If it is a file, check to make sure that it actually exists on the
+	 * filesystem. If it is neither, it may be the raw bytes of an image.
 	 */
 	protected function validateRequestedResource(string $filename): bool
 	{
@@ -144,12 +152,161 @@ abstract class PHPThumb
 			return true;
 		}
 
-		if (file_exists($filename))
+		// A filesystem call with a null byte in the path is a fatal error on
+		// PHP 8, and binary image data almost always contains null bytes —
+		// so the path is only probed when it could plausibly be one.
+		if (!str_contains($filename, "\0") && @file_exists($filename))
 		{
 			return true;
 		}
 
+		// Neither a path nor a URL: the source may be the raw bytes of an
+		// image (a database blob, a data URI payload, an upload).
+		if ($this->looksLikeImageBytes($filename))
+		{
+			$this->raw_image = true;
+			return true;
+		}
+
 		return false;
+	}
+
+	/**
+	 * Returns true when the given string looks like the raw bytes of an
+	 * image rather than a filesystem path.
+	 *
+	 * Two independent signals are used:
+	 *
+	 *  1. The data starts with one of the known image signatures.
+	 *  2. The data is binary — it contains a null byte, or it is not valid
+	 *     UTF-8. A filesystem path is always text, so binary data cannot
+	 *     be one.
+	 *
+	 * A path that does not exist satisfies neither test, so a typo still
+	 * produces the familiar "Image file not found" error rather than a
+	 * confusing format error.
+	 */
+	protected function looksLikeImageBytes(string $data): bool
+	{
+		if ($data === '')
+		{
+			return false;
+		}
+
+		if ($this->sniffImageFormat($data) !== null)
+		{
+			return true;
+		}
+
+		if (str_contains($data, "\0"))
+		{
+			return true;
+		}
+
+		// preg_match('//u', …) validates UTF-8 without needing ext-mbstring.
+		return preg_match('//u', $data) !== 1;
+	}
+
+	/**
+	 * Identifies an image format from the leading bytes of the data.
+	 *
+	 * The signatures are the same ones every image codec publishes, so the
+	 * detection does not depend on the PHP build knowing about a given
+	 * format — which matters for AVIF and WebP, whose MIME types are not
+	 * reported by getimagesize() on every PHP version.
+	 *
+	 * @return string|null The canonical format name, or null when the data
+	 *                     does not match a known signature.
+	 */
+	protected function sniffImageFormat(string $data): ?string
+	{
+		$length = strlen($data);
+
+		// JPEG
+		if ($length >= 3 && substr($data, 0, 3) === "\xFF\xD8\xFF")
+		{
+			return 'JPEG';
+		}
+
+		// PNG
+		if ($length >= 8 && substr($data, 0, 8) === "\x89PNG\r\n\x1A\n")
+		{
+			return 'PNG';
+		}
+
+		// GIF
+		if ($length >= 6
+			&& (substr($data, 0, 6) === 'GIF87a' || substr($data, 0, 6) === 'GIF89a'))
+		{
+			return 'GIF';
+		}
+
+		// WebP — a RIFF container with a WEBP form type
+		if ($length >= 12 && substr($data, 0, 4) === 'RIFF' && substr($data, 8, 4) === 'WEBP')
+		{
+			return 'WEBP';
+		}
+
+		// JPEG XL — the naked code stream
+		if ($length >= 2 && substr($data, 0, 2) === "\xFF\x0A")
+		{
+			return 'JXL';
+		}
+
+		// BMP
+		if ($length >= 2 && substr($data, 0, 2) === 'BM')
+		{
+			return 'BMP';
+		}
+
+		// TIFF, little- and big-endian
+		if ($length >= 4
+			&& (substr($data, 0, 4) === "II\x2A\x00" || substr($data, 0, 4) === "MM\x00\x2A"))
+		{
+			return 'TIFF';
+		}
+
+		// ISOBMFF-based formats: the brand sits at offset 8, after 'ftyp'.
+		if ($length >= 12 && substr($data, 4, 4) === 'ftyp')
+		{
+			$brand = substr($data, 8, 4);
+
+			if (in_array($brand, ['avif', 'avis'], true))
+			{
+				return 'AVIF';
+			}
+
+			if (in_array($brand, ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs'], true))
+			{
+				return 'HEIC';
+			}
+
+			if ($brand === 'JXL ')
+			{
+				return 'JXL';
+			}
+		}
+
+		// SVG is text, so it has no binary signature — look for the root
+		// element in the first kilobyte instead.
+		$head = substr($data, 0, 1024);
+
+		if (preg_match('//u', $head) === 1)
+		{
+			$trimmed = ltrim($head);
+
+			if (str_starts_with($trimmed, '<svg'))
+			{
+				return 'SVG';
+			}
+
+			if (str_starts_with($trimmed, '<?xml') && stripos($head, '<svg') !== false)
+			{
+				return 'SVG';
+			}
+		}
+
+		return null;
 	}
 
 	/**

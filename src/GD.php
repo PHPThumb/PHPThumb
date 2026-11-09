@@ -103,14 +103,15 @@ class GD extends PHPThumb
 		$this->determineFormat();
 		$this->verifyFormatCompatibility();
 
-		$this->old_image = match ($this->format) {
-			'AVIF'		=> imagecreatefromavif		($this->file_name),
-			'GIF'		=> imagecreatefromgif		($this->file_name),
-			'JPEG'		=> imagecreatefromjpeg		($this->file_name),
-			'PNG'		=> imagecreatefrompng		($this->file_name),
-			'STRING'	=> imagecreatefromstring	($this->file_name),
-			'WEBP'		=> imagecreatefromwebp		($this->file_name),
-		};
+		$this->old_image = $this->raw_image
+			? imagecreatefromstring($this->file_name)
+			: match ($this->format) {
+				'AVIF'		=> imagecreatefromavif		($this->file_name),
+				'GIF'		=> imagecreatefromgif		($this->file_name),
+				'JPEG'		=> imagecreatefromjpeg		($this->file_name),
+				'PNG'		=> imagecreatefrompng		($this->file_name),
+				'WEBP'		=> imagecreatefromwebp		($this->file_name),
+			};
 
 		if ($this->old_image === false)
 		{
@@ -2621,6 +2622,15 @@ class GD extends PHPThumb
 	 */
 	protected function determineFormat(): void
 	{
+		// Raw bytes carry no path for getimagesize() to inspect, so the
+		// format is sniffed from the data itself.
+		if ($this->raw_image)
+		{
+			$this->determineRawFormat();
+
+			return;
+		}
+
 		$format_info = getimagesize($this->file_name);
 
 		// non-image files will return false
@@ -2646,6 +2656,38 @@ class GD extends PHPThumb
 			'image/webp'	=> 'WEBP',
 			default			=> throw new Exception('Image format not supported: ' . $mime_type),
 		};
+	}
+
+	/**
+	 * Determines the format of an image supplied as raw bytes.
+	 *
+	 * The format is sniffed from the image signature rather than derived
+	 * from a MIME type, so AVIF and WebP are recognised regardless of
+	 * whether the installed PHP build reports those MIME types.
+	 *
+	 * @throws Exception
+	 */
+	protected function determineRawFormat(): void
+	{
+		$format = $this->sniffImageFormat($this->file_name);
+
+		if ($format === null)
+		{
+			throw new Exception(
+				'Could not determine the format of the supplied image data. '
+				. 'The GD backend supports AVIF, GIF, JPEG, PNG and WEBP.'
+				);
+		}
+
+		if (!in_array($format, ['AVIF', 'GIF', 'JPEG', 'PNG', 'WEBP'], true))
+		{
+			throw new Exception(
+				'Image format not supported: ' . $format . '. '
+				. 'The GD backend supports AVIF, GIF, JPEG, PNG and WEBP.'
+				);
+		}
+
+		$this->format = $format;
 	}
 
 	/**

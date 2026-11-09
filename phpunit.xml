@@ -19,6 +19,7 @@
         <testsuite name="Core">
             <file>./tests/PHPThumb/Tests/PHPThumbTest.php</file>
             <file>./tests/PHPThumb/Tests/QualityPresetTest.php</file>
+            <file>./tests/PHPThumb/Tests/RawBytesTest.php</file>
         </testsuite>
 
         <!-- GD-only suite -->
