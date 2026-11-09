@@ -51,8 +51,8 @@ PHPThumb 2.5 is a **feature expansion** release — every manipulation method st
 | `sharpen()` | Unsharp-mask style sharpening |
 | `border()` | Add a solid-color frame of any thickness |
 | `text()` | Render text with font (auto-resolved via fontconfig), color, size, shadow, stroke, background, multi-line alignment, and 9-grid positioning |
-| **Advanced filter wrappers** | `grayscale()`, `brightness()`, `contrast()`, `blur()`, `pixelate()`, `edgeDetect()`, `emboss()`, `smooth()` — chainable convenience wrappers around `imageFilter()` |
-| **Quality presets** | `setQualityPreset('off' \| 'max' \| 'high' \| 'medium' \| 'low')` — one call sets a perceptually comparable quality across JPEG, WebP, AVIF and JXL |
+| **Advanced filter wrappers** | `grayscale()`, `brightness()`, `contrast()`, `blur()`, `pixelate()`, `edgeDetect()`, `emboss()`, `smooth()` — chainable convenience wrappers around the platform-native filter call |
+| **Quality presets** | `setQualityPreset('off' \| 'max' \| 'high' \| 'medium' \| 'low')` — one call sets a perceptually comparable quality tier across JPEG, WebP, AVIF and JXL |
 | **Per-format quality options** | `jpegQuality`, `webpQuality`, `avifQuality` and the new `jxlQuality` are independent knobs; `null` means "use the codec's own default" |
 
 All new methods are available on **both** backends. See the dedicated sections below for full documentation.
@@ -63,6 +63,8 @@ All new methods are available on **both** backends. See the dedicated sections b
 * The quality options now accept `null`, which means "apply no quality setting" and leaves the codec's own default in place. This is distinct from a quality of `0`.
 * Quality options are now honoured by `show()` as well as `save()`. Previously, streamed output silently ignored them.
 * The only public signature change is `imageFilter()`, whose optional arguments were widened from `bool` to `int|float|bool`. This is a widening, so existing calls are unaffected — but numeric arguments now reach the filter instead of being coerced to `true`.
+* `sharpen()` is now `sharpen(?int $amount = null)`. Called without an argument it uses the `sharpenAmount` option (default `50`); an explicit argument always wins, and `0` remains a no-op.
+* The plugin stack now runs on `save()` and `getImageAsString()` as well as `show()`, **at most once per instance** — so streaming *and* saving the same thumbnail no longer composites a watermark twice.
 * `PHPThumb\Imagick::FILTER_*` class constants are new public API.
 
 ---
@@ -77,6 +79,7 @@ All new methods are available on **both** backends. See the dedicated sections b
 - **Crop operations** — From-center, quadrant-based, percentage-based, or vanilla x/y cropping
 - **Rotation** — 90° clockwise/counter-clockwise or arbitrary degrees
 - **Remote image support** — Load images from URLs as well as local files
+- **Raw image bytes** — Pass the binary content of an image directly (a database blob, an upload, a data-URI payload) — supported by both backends
 
 ### Image correction & enhancement
 
@@ -183,6 +186,19 @@ $thumb->autoOrient()
 
 The fluent API is identical across both backends.
 
+### Loading from raw bytes
+
+Both backends also accept the **binary content** of an image directly — useful for a database column, an upload, or a data-URI payload:
+
+```php
+$bytes = file_get_contents('path/to/image.jpg');
+
+$thumb = new GD($bytes);        // or new Imagick($bytes)
+$thumb->resize(400, 0)->show();
+```
+
+A source is treated as raw bytes when it is neither an existing file nor a valid URL, and it looks like image data — it carries a known image signature, or it is binary. A path that does not exist is still reported as `Image file not found`, so a typo is never mistaken for a byte string.
+
 ---
 
 ## Choosing a Backend: GD vs Imagick
@@ -193,12 +209,14 @@ Both backends implement the same `PHPThumb\PHPThumb` abstract API. They differ i
 |---------|---------------|--------------------|
 | Default availability | Bundled with PHP since PHP 8 | Requires PECL extension |
 | Formats | JPEG, PNG, GIF, WebP, AVIF | JPEG, PNG, GIF, WebP, AVIF, **BMP, HEIC, JXL, TIFF** |
+| Sources accepted | File path, URL, raw bytes | File path, URL, raw bytes |
 | Memory usage | Lower | Higher (full pixel buffer) |
-| Resize quality | Good (bicubic in modern GD) | Excellent (Lanczos / Catmull on Imagick 7) |
-| Rotation | Bicubic approximation | Pixel-accurate |
+| Resize quality | Good (bilinear resampling) | Excellent (Lanczos / Catmull on Imagick 7) |
+| Rotation | Approximate — black triangles in the corners where the canvas expands | Pixel-accurate, with an explicit fill colour |
 | Text rendering | TTF via `imagettftext()` with fontconfig auto-resolution; built-in fonts as fallback. Renders ~25–35% larger than Imagick at the same `size` on Linux. | `ImagickDraw` with TTF and built-in font support. Smaller at the same `size` than GD. |
+| PNG alpha through `border()` | Preserved | Lost — the frame is composited onto an opaque canvas |
 | Plugin output | Single-pass GD ops | Compositing with full alpha support |
-| Constructor return on plugin dispatch | `PHPThumb\GD` | `PHPThumb\Imagick` |
+| Instance type after a manipulation | `PHPThumb\GD` | `PHPThumb\Imagick` |
 
 **Recommendation**: use GD for typical web thumbnails (smaller memory footprint, no extension dependency). Use Imagick when you need BMP/HEIC/JXL/TIFF support, higher-quality resampling, pixel-accurate rotation, or richer text rendering.
 
@@ -222,9 +240,11 @@ You can mix backends within the same project — for example, use GD for JPEG th
 
 Format support is detected automatically; an exception is thrown if your environment can't handle the loaded file.
 
-> Loading directly from URLs is supported by both backends.
+> **JPEG XL** requires ImageMagick to be compiled with `libjxl`. On a build without the delegate, loading a JXL file or writing one throws an `ImagickException`. The `jxlQuality` option exists only on the Imagick backend — GD has no JPEG XL codec at all.
 
----
+> **HEIC** likewise depends on the ImageMagick build carrying the HEIC delegate (typically `libheif`).
+
+> Loading directly from URLs is supported by both backends, as is passing the **raw bytes** of an image.
 
 ## Core API
 
@@ -241,7 +261,7 @@ $thumb->resize(800, 0);   // Width only
 $thumb->resize(0, 600);   // Height only
 ```
 
-#### `resizePercent(int $percent): self`
+#### `resizePercent(int $percent = 0): self`
 Uniformly scales the image by a percentage (1–100).
 
 ```php
@@ -269,6 +289,10 @@ Like `adaptiveResize`, but controls where the crop occurs on a 1–100 scale (1 
 ```php
 $thumb->adaptiveResizePercent(400, 400, 25);
 ```
+
+> **Note:** the three adaptive resizers clamp their result to the source dimensions unless the `resizeUp` option is `true`. Asking for 200×400 from a 500×375 landscape source yields 200×375, not 200×400.
+>
+> A **width** of `0` is rejected with an `\InvalidArgumentException` on both backends. A **height** of `0` is derived from the source image's aspect ratio, so `adaptiveResizePercent(200, 0, 25)` produces a 200×150 crop from a 500×375 source.
 
 ### Crop Operations
 
@@ -303,6 +327,8 @@ Arbitrary rotation by N degrees.
 $thumb->rotateImageNDegrees(45);
 ```
 
+> **Backend difference:** GD rotates onto a **black** background, so arbitrary rotations leave black triangles in the corners where the canvas expanded beyond the source. Imagick rotates onto the `alphaMaskColor` option (default white) and produces clean corners.
+
 #### `imageFilter(int $filter, int|float|bool $arg1 = false, int|float|bool $arg2 = false, int|float|bool $arg3 = false, int|float|bool $arg4 = false): self`
 Applies a low-level filter. The filter ids are **backend-specific** — the two backends do not share an id space, so there is no portable "grayscale id".
 
@@ -316,7 +342,7 @@ $thumb->imageFilter(IMG_FILTER_BRIGHTNESS, 50);
 
 **Imagick** — use `PHPThumb\Imagick::FILTER_*`.
 
-> **Why not `Imagick::FILTER_*`?** The legacy `Imagick::filter()` method and its `Imagick::FILTER_*` constants wrapped ImageMagick 6's `MagickFilterImage()` API. ImageMagick 7 removed that API, so ext-imagick 3.5+ dropped both. Calling `imageFilter()` with an `Imagick::FILTER_*` constant on a modern build is a fatal error. (There were never `Imagick::FILTER_GRAYSCALE` or `Imagick::FILTER_NEGATE` constants in any version — those names are GD's.)
+> **Why not `Imagick::FILTER_*`?** The legacy `Imagick::filter()` method and its `Imagick::FILTER_*` constants wrapped ImageMagick 6's `MagickFilterImage()` API. ImageMagick 7 removed that API, so ext-imagick 3.5+ dropped both. Referring to the global constant on a modern build is an *undefined constant* error at the call site. (There were never `Imagick::FILTER_GRAYSCALE` or `Imagick::FILTER_NEGATE` constants in any version — those names are GD's.)
 
 PHPThumb republishes the same ids as class constants and implements the filters on primitives that exist in **both** ImageMagick 6 and 7:
 
@@ -347,13 +373,26 @@ Notes:
 - An unknown id throws `\InvalidArgumentException`.
 - The convolution filters produce the raw kernel response. That is close to, but not bit-identical with, the legacy ImageMagick 6 result.
 - The optional arguments are typed `int|float|bool`; `false` means *"not supplied"*. Numeric values are honoured (radius / sigma for the filters that take them).
+- `Imagick::convolveImage()` changed signature between ext-imagick generations, and on some builds a kernel built from a PHP matrix comes back empty. When the native path is unusable, a pure-PHP convolution is used instead, so the result is identical on every build.
 
-For the full list of emulated filters:
-
-```php
-PHPThumb\Imagick::legacyFilterIds();
-// [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-```
+> ⚠️ **Never pass a GD constant to the Imagick backend.** The two id spaces overlap numerically, and the overlap **fails silently** — it applies a different filter rather than raising an error:
+>
+> | GD constant | Id | What the Imagick backend would apply |
+> |---|---|---|
+> | `IMG_FILTER_NEGATE` | 0 | throws (`FILTER_UNDEFINED`) |
+> | `IMG_FILTER_GRAYSCALE` | 1 | `FILTER_POINT` — a **no-op** |
+> | `IMG_FILTER_BRIGHTNESS` | 2 | throws (`FILTER_CELLULAR`) |
+> | `IMG_FILTER_CONTRAST` | 3 | `FILTER_EDGEDETECT` |
+> | `IMG_FILTER_COLORIZE` | 4 | `FILTER_EMBOSS` |
+> | `IMG_FILTER_EDGEDETECT` | 5 | `FILTER_GAUSSIAN` |
+> | `IMG_FILTER_EMBOSS` | 6 | `FILTER_LAPLACE` |
+> | `IMG_FILTER_SMOOTH` | 7 | `FILTER_LAPLACE_ROBERTS` |
+> | `IMG_FILTER_PIXELATE` | 8 | `FILTER_OCTAGON` |
+> | `IMG_FILTER_MEAN_REMOVAL` | 9 | `FILTER_PREWITT` |
+> | `IMG_FILTER_SELECTIVE_BLUR` | 10 | `FILTER_ROBERTS` |
+> | `IMG_FILTER_RESIZE` | 11 | `FILTER_SOBEL` |
+>
+> Only two of the twelve fail loudly. Use the chainable wrappers (`grayscale()`, `brightness()`, `contrast()`, `blur()`, …) when you want the same effect on both backends.
 
 ### Pad
 
@@ -368,7 +407,16 @@ $thumb->pad(800, 600, [0, 0, 0]);       // Black background
 ### Orientation
 
 #### `autoOrient(): self`
-Reads the EXIF orientation tag (JPEG / TIFF / HEIC inputs) and rotates/mirrors the image so it displays upright. No-op if no EXIF tag is present, if the tag is `1` (normal), or if the `ext-exif` extension isn't loaded.
+Reads the EXIF orientation tag and rotates/mirrors the image so it displays upright.
+
+**Backend scope:**
+
+- **GD** — only handles **JPEG** sources. For PNG, GIF, WEBP, AVIF, HEIC and TIFF it is a silent no-op. Requires `ext-exif`.
+- **Imagick** — handles any format that carries EXIF (JPEG, TIFF, HEIC) natively, via `Imagick::autoOrient()`. Does **not** require `ext-exif`.
+
+No-op when the image has no EXIF tag, when the tag is `1` (normal), or when it falls outside the 1–8 range. Throws no exceptions — every failure degrades to a no-op.
+
+Both backends are **idempotent**: calling `autoOrient()` twice never rotates twice.
 
 ```php
 $thumb = new GD('phone-photo.jpg');
@@ -394,13 +442,20 @@ $thumb->flip('both');        // 180° rotation equivalent
 
 ### Sharpen
 
-#### `sharpen(int $amount = 50): self`
+#### `sharpen(?int $amount = null): self`
 Sharpens the image with an unsharp-mask style kernel. `$amount` ranges from `0` (no sharpening) to `100` (strong sharpening).
 
+Called **without an argument**, it uses the `sharpenAmount` option (default `50`). An explicit argument always wins over the option, and `0` remains a no-op.
+
 ```php
-$thumb->sharpen();      // default 50
-$thumb->sharpen(80);    // aggressive sharpening for previews
+$thumb->sharpen();      // uses the sharpenAmount option (default 50)
+$thumb->sharpen(80);    // explicit — always wins over the option
+
+$thumb = new GD('photo.jpg', ['sharpenAmount' => 70]);
+$thumb->sharpen();      // sharpens at 70
 ```
+
+> **Backend difference:** the two backends sharpen with different algorithms. Imagick uses a Gaussian-style sharpen (`Imagick::sharpenImage()`); GD uses an unsharp-mask style 3×3 convolution. Both preserve flat regions, but the pixel response differs — don't expect byte-identical output at the same amount.
 
 ### Gamma Correction
 
@@ -430,6 +485,8 @@ $thumb->border(4, '#FFFFFF');        // 4px white frame
 $thumb->border(2, [200, 200, 200]);  // 2px light-grey frame
 ```
 
+> **Backend difference — PNG transparency.** GD preserves the alpha channel of a PNG source, so transparent regions stay transparent inside the frame. Imagick composites onto an **opaque** canvas, so those regions take the border colour instead. Use a JPEG source if you want identical output on both backends.
+
 ### Text Overlay
 
 #### `text(string $text, string $position = 'bottom-right', array $options = []): self`
@@ -440,13 +497,13 @@ Renders `$text` onto the image. The full options array is described below.
 | String | Anchor |
 |--------|--------|
 | `'top-left'`, `'northwest'` | upper-left corner |
-| `'top'`, `'north'`, `'top-center'` | top-center |
+| `'top'`, `'north'`, `'upper'`, `'top-center'` | top-center |
 | `'top-right'`, `'northeast'` | upper-right corner |
 | `'left'`, `'west'`, `'center-left'` | left-center |
 | `'center'` | center |
 | `'right'`, `'east'`, `'center-right'` | right-center |
 | `'bottom-left'`, `'southwest'` | lower-left corner |
-| `'bottom'`, `'south'`, `'bottom-center'` | bottom-center |
+| `'bottom'`, `'south'`, `'lower'`, `'bottom-center'` | bottom-center |
 | `'bottom-right'`, `'southeast'` | lower-right corner |
 
 **Options array:**
@@ -461,7 +518,7 @@ Renders `$text` onto the image. The full options array is described below.
 | `offsetY` | `int` | `10` | Padding from the vertical anchor. |
 | `align` | `string` | `'center'` | Per-line horizontal alignment: `'left'` / `'center'` / `'right'`. Multi-line text (`"\n"`) is rendered line-by-line so per-line alignment works correctly. |
 | `alpha` | `int` | `100` | Text opacity, 0–100. |
-| `lineHeight` | `float` | `1.2` (GD) / `1.3` (Imagick) | Multi-line spacing multiplier on `size`. `1.0` = tight (no gap), `1.5` = ~50% gap, `2.0` = doubles line spacing. The effective line height is the larger of `size × lineHeight` and a font-metric floor (`ascender + descender`, buffered by 30%), so lines never overlap regardless of the multiplier. Lowering it below the floor has no effect. |
+| `lineHeight` | `float` | `1.3` with a TTF font; `1.5` with GD's built-in fallback font | Multi-line spacing multiplier on `size`. `1.0` = tight (no gap), `1.5` = ~50% gap, `2.0` = doubles line spacing. The effective line height is the larger of `size × lineHeight` and a font-metric floor (`ascender + descender`, buffered by 30%), so lines never overlap regardless of the multiplier. Lowering it below the floor has no effect. |
 | `shadow` | `array` | `['enabled' => false]` | Drop shadow: keys `enabled`, `color`, `offsetX`, `offsetY`, `blur`. The `blur` key is currently parsed but unused (both backends use vector text rendering; blurred shadows would require a separate Gaussian blur pass). |
 | `stroke` | `array` | `['enabled' => false]` | Text outline: keys `enabled`, `color`, `width`. Requires a TTF font on GD; on Imagick, built-in fonts don't stroke reliably — pass a TTF for consistent results. |
 | `background` | `array` | `['enabled' => false]` | Text background pill: keys `enabled`, `color`, `padding`, `alpha`. Drawn once around the full multi-line block. |
@@ -472,7 +529,7 @@ The `'font'` option accepts three shapes of input, resolved in order:
 
 1. **Explicit TTF file path** — used directly if the file exists. If the path doesn't exist, the GD backend emits an `E_USER_WARNING` and falls through; the Imagick backend falls through silently.
 2. **fontconfig family name** (no `/`, no file extension) — resolved via `fc-match` if fontconfig is installed. Examples: `'sans-serif'`, `'DejaVu Sans'`, `'Liberation Serif'`. This is the recommended approach on Linux/macOS — no need to hard-code system paths.
-3. **System font path scan** — last-resort lookup of well-known paths: `/usr/share/fonts/dejavu/DejaVuSans*.ttf`, `/Library/Fonts/Arial*.ttf`, `C:\Windows\Fonts\arial*.ttf`, etc.
+3. **System font path scan** — last-resort lookup of well-known paths: `/usr/share/fonts/dejavu/DejaVuSans*.ttf`, `/Library/Fonts/Arial.ttf`, `C:\Windows\Fonts\arial.ttf`, etc.
 4. **Built-in font** (GD only) — bitmap font index 5. **This ignores `size`, `angle`, `shadow`, and `stroke`.** Install `fonts-dejavu-core` (Debian/Ubuntu), `dejavu-sans-fonts` (Fedora), or `ttf-dejavu` (Arch) to get a real TTF font and unlock the full option surface.
 
 #### Draw order
@@ -480,7 +537,7 @@ The `'font'` option accepts three shapes of input, resolved in order:
 For each line, layers are rendered in this order:
 
 1. **Background pill** — drawn once around the full multi-line block (not per-line), with the configured `padding` margin.
-2. **Shadow** — separate render pass (GD: a second `imagettftext()` call; Imagick: separate `annotateImage()` call with a shadow-only `ImagickDraw`), offset by `shadow.offsetX/Y`.
+2. **Shadow** — separate render pass (GD: a second `imagettftext()` call; GD: a second `imagettftext()` call; Imagick: separate `annotateImage()` call with a shadow-only `ImagickDraw`), offset by `shadow.offsetX/Y`.
 3. **Stroke** — separate render pass. GD uses a per-pixel-offset replication loop (since `imagettftext()` has no native stroke); Imagick uses an `ImagickDraw` with transparent fill + `setStrokeWidth()`. Both produce a stroke outline that sits at the glyph edge.
 4. **Main text** — final render pass, on top of all the above.
 
@@ -548,7 +605,7 @@ Convenience wrappers around the platform-native `imageFilter()` — all availabl
 | `brightness(int $level): self` | `IMG_FILTER_BRIGHTNESS` | `modulateImage(100+$level, 100, 100)` |
 | `contrast(int $level): self` | `IMG_FILTER_CONTRAST` | `contrastImage($level)` |
 | `blur(int\|float $amount = 1): self` | `IMG_FILTER_GAUSSIAN_BLUR` | `gaussianBlurImage(0, $amount)` |
-| `pixelate(int $blockSize = 10): self` | `IMG_FILTER_PIXELATE` | scale down + scale up |
+| `pixelate(int $block_size = 10): self` | `IMG_FILTER_PIXELATE` | scale down + scale up |
 | `edgeDetect(): self` | `IMG_FILTER_EDGEDETECT` | `edgeImage(1)` |
 | `emboss(): self` | `IMG_FILTER_EMBOSS` | `embossImage(0, 1)` |
 | `smooth(int $level = 1): self` | `IMG_FILTER_SMOOTH` | `gaussianBlurImage(max(0.5, $level), 1)` |
@@ -570,6 +627,8 @@ The Imagick backend's `imageFilter()` covers only the spatial-filter family list
 ```php
 $thumb->getOldImage()->sepiaToneImage(80);
 ```
+
+> **Backend difference:** `brightness()`, `contrast()` and `smooth()` map onto different native operations in each backend, and the magnitude is not calibrated between them — a given `$level` is not equally strong on both. The direction of the effect matches.
 
 ### Output
 
@@ -595,13 +654,19 @@ Returns the raw image binary as a string — perfect for storage in databases or
 $dataUri = 'data:image/jpeg;base64,' . base64_encode($thumb->getImageAsString());
 ```
 
+> **Plugins run on output.** The plugin stack is executed automatically by `show()`, `save()` and `getImageAsString()` — but **at most once per instance**. Whichever of those you call first applies the plugins; the later calls write or stream the already-plugged image. Without that guard a watermark would be composited twice when you both stream and save the same thumbnail.
+>
+> The `Content-Type` header emitted by `show()` is derived from the image's format through the library's alias table, so builds that report a delegate alias still emit a correct type — `JPE` → `image/jpeg`, `TIF` → `image/tiff`, `JPEGXL` → `image/jxl`.
+
 ---
 
 ## Plugins
 
 Plugins extend PHPThumb with custom operations. They implement `PHPThumb\PluginInterface` and receive the active `PHPThumb` instance, which they can manipulate via public getters/setters.
 
-Plugins are passed as the third constructor argument and are executed automatically before `show()` or `save()`. All built-in plugins transparently dispatch to the correct backend — you can pass `PHPThumb\GD` or `PHPThumb\Imagick` instances interchangeably, and the plugin will call the right code path.
+Plugins are passed as the third constructor argument and are executed automatically before `show()`, `save()` or `getImageAsString()`. All built-in plugins transparently dispatch to the correct backend — you can pass `PHPThumb\GD` or `PHPThumb\Imagick` instances interchangeably, and the plugin will call the right code path.
+
+> **The plugin stack runs at most once per instance.** Whichever of `show()` / `save()` / `getImageAsString()` you call first applies the plugins; later calls write or stream the already-plugged image. Without that guard a watermark would be composited twice when you both stream and save the same thumbnail.
 
 ### Built-in Plugins
 
@@ -627,7 +692,7 @@ $thumb->resize(800, 0)->show();
 
 ```php
 // Imagick watermark on Imagick image
-$wm = new PHPThumb\Imagick('watermark.png');
+$wm = new PHPThumb\Imagick('logo.png');
 
 $thumb = new PHPThumb\Imagick('photo.jpg', [], [
     new PHPThumb\Plugins\Watermark(
@@ -643,6 +708,8 @@ $thumb->resize(800, 0)->show();
 **Position keywords** — combine horizontal + vertical:
 - Horizontal: `left`/`west`, `right`/`east`, `center`
 - Vertical: `top`/`north`/`upper`, `bottom`/`south`/`lower`, `center`
+
+> **Note:** the watermark image must be a `PHPThumb\GD` or `PHPThumb\Imagick` instance — not a raw file path and not a bare `\GdImage` / `\Imagick`. The plugin reads the watermark's current dimensions and pixels through that interface.
 
 #### `PHPThumb\Plugins\Trim`
 Auto-trims borders of a specific color (great for scanned documents or images on a uniform background).
@@ -667,6 +734,10 @@ $thumb = new PHPThumb\Imagick('scan.tiff', [], [
 $thumb->save('scan-trimmed.png', 'PNG');
 ```
 
+**Sides** — any combination of `T` (top), `B` (bottom), `L` (left), `R` (right). An empty string or more than four characters throws `\InvalidArgumentException`, as does an RGB array that isn't three values in `0..255`.
+
+> **Backend difference:** the Imagick branch matches on **RGB only** and ignores alpha. The GD branch additionally treats a fully-transparent white pixel as a match. The practical effect is the same for ordinary scans.
+
 #### `PHPThumb\Plugins\Reflection`
 Generates a classic glossy reflection effect.
 
@@ -684,7 +755,19 @@ $thumb = new PHPThumb\GD('logo.png', [], [
 $thumb->show();
 ```
 
-The Imagick plugin uses a single multi-pass composite that approximates the GD per-row gradient. Visual fidelity is slightly different from GD (constant-fade vs. linear gradient) but the overall effect is similar.
+**Parameters:**
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `percent` | 50 | Which slice of the source is mirrored — 50 means the bottom half |
+| `reflection` | 50 | Height of the reflection as a percentage of the source height |
+| `white` | 80 | Fade intensity — how strongly the white overlay washes out the reflection |
+| `border` | `false` | Draw a separator border between the image and its reflection |
+| `border_color` | `'#FFFFFF'` | Border colour, as a hex string or RGB array |
+
+> **Backend difference — the fade shape.** The GD branch paints a white rectangle on each row with a rising alpha, producing a **linear** gradient down the reflection. The Imagick branch composites a single solid-white overlay whose alpha is scaled by `white / 100`, producing a **constant** fade. The overall effect is similar, but the two are not pixel-identical.
+
+> **Backend difference — the mirror.** The GD branch flips with `imageflip(IMG_FLIP_VERTICAL)`. The Imagick branch rotates 180° and then flops horizontally, which is the canonical Imagick equivalent of a vertical flip.
 
 ### Writing Custom Plugins
 
@@ -738,17 +821,17 @@ $thumb = new PHPThumb\GD('image.jpg', [
 |--------|------|---------|---------|-------------|
 | `resizeUp` | `bool` | `false` | GD & Imagick | Allow upscaling images that are smaller than the target size |
 | `jpegQuality` | `int\|null` | `100` | GD & Imagick | JPEG output quality (0–100). `null` = codec default |
-| `jxlQuality` | `int\|null` | `90` | Imagick | JPEG XL output quality (0–100). Independent of `jpegQuality`. `null` = codec default |
+| `jxlQuality` | `int\|null` | `90` | **Imagick only** | JPEG XL output quality (0–100). Independent of `jpegQuality`. `null` = codec default |
 | `webpQuality` | `int\|null` | `100` | GD & Imagick | WebP output quality (0–100). `null` = codec default |
 | `avifQuality` | `int\|null` | `100` | GD & Imagick | AVIF output quality (0–100). `null` = codec default |
 | `qualityPreset` | `string` | — | GD & Imagick | Constructor / `setOptions()` shortcut; applies a named preset (`off`, `max`, `high`, `medium`, `low`). Not retained as an option |
 | `correctPermissions` | `bool` | `false` | GD & Imagick | Attempt to `chmod` the target directory if not writable |
 | `preserveAlpha` | `bool` | `true` | GD & Imagick | Preserve PNG alpha channel |
-| `alphaMaskColor` | `array` | `[255, 255, 255]` | GD & Imagick | RGB color used for PNG alpha mask |
+| `alphaMaskColor` | `array` | `[255, 255, 255]` | GD & Imagick | RGB colour used for the PNG transparent fill on GD; the **rotation background** on Imagick |
 | `preserveTransparency` | `bool` | `true` | GD & Imagick | Preserve GIF / WebP transparency |
-| `transparencyMaskColor` | `array` | `[0, 0, 0]` | GD & Imagick | RGB color used for GIF transparency mask |
+| `transparencyMaskColor` | `array` | `[0, 0, 0]` | GD & Imagick | RGB colour used for the GIF transparency mask |
 | `interlace` | `bool\|null` | `null` | GD & Imagick | Enable/disable interlacing (progressive rendering). `null` = leave default |
-| `sharpenAmount` | `int` | `50` | GD & Imagick | Default sharpening strength used by `sharpen()` when no argument is passed |
+| `sharpenAmount` | `int` | `50` | GD & Imagick | Default sharpening strength (0–100) used by `sharpen()` when it is called **without an argument**. Setting this option does not by itself apply sharpening to the image — call `sharpen()` for that. An explicit argument to `sharpen()` overrides it. |
 | `textFont` | `string\|null` | `null` | GD & Imagick | Default TTF font path used by `text()` when `options.font` is not provided |
 | `textDefaultSize` | `int` | `12` | GD & Imagick | Default font size used by `text()` when `options.size` is not provided |
 
@@ -856,7 +939,7 @@ Then pick, for each format, the lowest quality whose SSIM still clears your thre
 
 ## Examples
 
-The `examples/` directory contains runnable demos for every feature. [Every example](https://github.com/PHPThumb/PHPThumb/wiki/Examples) is implemented with **both backends** — switch the `use` statement at the top of any example to swap between them.
+The `examples/` directory contains runnable demos for every feature. Most are implemented with **both backends** — switch the `$backend` class-constant line near the top of any example to swap between them.
 
 ```php
 // Basic resize
@@ -885,6 +968,12 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
 (new PHPThumb\GD('photo.jpg'))
     ->resize(400, 0)
     ->sharpen(75)
+    ->save('crisp.jpg');
+
+// Sharpen at the configured default
+(new PHPThumb\GD('photo.jpg', ['sharpenAmount' => 70]))
+    ->resize(400, 0)
+    ->sharpen()
     ->save('crisp.jpg');
 
 // Add a frame
@@ -967,6 +1056,10 @@ $thumb->resize(400, 300)->save('photo-small.jpg');
         'color' => '#FFFFFF',
     ])
     ->show();
+
+// Load the raw bytes of an image (both backends)
+$bytes = file_get_contents('photo.jpg');
+(new PHPThumb\GD($bytes))->resize(400, 0)->save('from-bytes.jpg');
 ```
 
 The same examples with Imagick:
@@ -1050,7 +1143,7 @@ Run any example directly:
 php examples/resize_basic.php
 ```
 
-To run the Imagick variant, edit the `use` line at the top of the example (or pass `--imagick` if the example script supports a flag — see individual example files).
+To run the Imagick variant, edit the `$backend` line at the top of the example (or script the substitution — see the [[Examples]] page).
 
 ---
 
@@ -1103,7 +1196,17 @@ Network-dependent tests (e.g. loading remote images from URLs) are gated behind 
 RUN_NETWORK_TESTS=1 vendor/bin/phpunit tests/PHPThumb/Tests/ImagickRemoteImageTest.php
 ```
 
-Format-coverage tests for BMP/HEIC/JXL/TIFF skip silently if the corresponding fixture file is absent.
+Format-coverage tests for BMP, HEIC and TIFF skip silently if the corresponding fixture file is absent. The **JPEG XL** tests do not: they generate a JXL fixture at runtime from the bundled JPEG, so the codec paths are exercised on any build with a `libjxl`-enabled ImageMagick — and skip cleanly on a build without one.
+
+### The EXIF orientation fixture
+
+The orientation tests need a JPEG that actually carries an EXIF `Orientation` tag. If it is missing or was generated without the tag, regenerate it:
+
+```bash
+php tests/resources/generate_exif_fixture.php
+```
+
+The generator writes the EXIF block by hand (a minimal APP1/TIFF structure), so neither `ext-imagick` nor `exiftool` is required. The orientation tests also rebuild the fixture on the fly when it is absent.
 
 ---
 
