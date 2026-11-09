@@ -1201,7 +1201,9 @@ class GD extends PHPThumb
 
 		if ($width == 0)
 		{
-			$width = intval(($height * $this->current_dimensions['width']) / $this->current_dimensions['height']);
+			$width = (int) ceil(
+				($height * $this->current_dimensions['width']) / $this->current_dimensions['height']
+			);
 		}
 
 		if ($height == 0)
@@ -1222,6 +1224,13 @@ class GD extends PHPThumb
 
 		// create the working image
 		$this->working_image = imagecreatetruecolor($this->max_width, $this->max_height);
+
+		if ($this->working_image === false)
+		{
+			throw new RuntimeException(
+				'GD: failed to create canvas for adaptiveResize()'
+			);
+		}
 
 		$this->preserveAlpha();
 
@@ -1275,8 +1284,8 @@ class GD extends PHPThumb
 	 * A percentage of 1 would crop the image all the way to the left, which would be the same as
 	 * using adaptiveResizeQuadrant() with $quadrant = 'L'
 	 *
-	 * A percentage of 50 would crop the image to the center which would be the same as using
-	 * adaptiveResizeQuadrant() with $quadrant = 'C', or even the original adaptiveResize()
+	 * A percentage of 50 would crop the image to the center which would be the same as
+	 * using adaptiveResizeQuadrant() with $quadrant = 'C', or even the original adaptiveResize()
 	 *
 	 * A percentage of 100 would crop the image all the way to the right, etc., etc.
 	 * Note that you can use any percentage between 1 and 100.
@@ -1285,6 +1294,9 @@ class GD extends PHPThumb
 	 * --------------------
 	 *
 	 * This works the same as for Landscape images except that a percentage of 1 means top and 100 means bottom
+	 *
+	 * A height of 0 is derived from the aspect ratio of the source image, matching
+	 * adaptiveResize(). The Imagick backend derives it the same way.
 	 */
 	public function adaptiveResizePercent(int $width, int $height, int $percent = 50): GD
 	{
@@ -1294,14 +1306,15 @@ class GD extends PHPThumb
 			throw new InvalidArgumentException('$width must be numeric and greater than zero');
 		}
 
+		// A height of 0 means "derive it from the aspect ratio" — the same
+		// convention adaptiveResize() uses. Without this the crop canvas
+		// would be created with a zero height, which GD rejects outright.
 		if ($height == 0)
 		{
-			throw new InvalidArgumentException('$height must be numeric and greater than zero');
+			$height = intval(($width * $this->current_dimensions['height']) / $this->current_dimensions['width']);
 		}
 
-		// make sure we're not exceeding our image size if we're not supposed to
 		$this->checkingMaxSize($width, $height);
-
 		$this->calcImageSizeStrict($this->current_dimensions['width'], $this->current_dimensions['height']);
 
 		// resize the image to be close to our desired dimensions
@@ -1312,6 +1325,13 @@ class GD extends PHPThumb
 
 		// create the working image
 		$this->working_image = imagecreatetruecolor($this->max_width, $this->max_height);
+
+		if ($this->working_image === false)
+		{
+			throw new RuntimeException(
+				'GD: failed to create canvas for adaptiveResizePercent()'
+				);
+		}
 
 		$this->preserveAlpha();
 
@@ -1370,7 +1390,7 @@ class GD extends PHPThumb
 	 * Adaptively Resizes the Image and Crops Using a Quadrant
 	 *
 	 * This function attempts to get the image to be as close to the provided dimensions as possible, and then crops the
-	 * remaining overflow using the quadrant to get the image to be the size specified.
+	 * remaining overflow to get the image to be the size specified.
 	 *
 	 * The quadrants available are Top, Bottom, Center, Left, and Right:
 	 *
@@ -1384,9 +1404,12 @@ class GD extends PHPThumb
 	 * +---+---+---+
 	 *
 	 * Note that if your image is Landscape and you choose either of the Top or Bottom quadrants (which won't
-	 * make sense since only the Left and Right would be available, then the Center quadrant will be used
+	 * make sense since only the Left or Right would be available, then the Center quadrant will be used
 	 * to crop. This would have exactly the same result as using adaptiveResize().
 	 * The same goes if you are portrait and you choose either of the Left or Right quadrants.
+	 *
+	 * A height of 0 is derived from the aspect ratio of the source image, matching
+	 * adaptiveResize(). The Imagick backend derives it the same way.
 	 */
 	public function adaptiveResizeQuadrant(int $width, int $height, string $quadrant = 'C'): GD
 	{
@@ -1396,14 +1419,15 @@ class GD extends PHPThumb
 			throw new InvalidArgumentException('$width must be numeric and greater than zero');
 		}
 
+		// A height of 0 means "derive it from the aspect ratio" — the same
+		// convention adaptiveResize() uses. Without this the crop canvas
+		// would be created with a zero height, which GD rejects outright.
 		if ($height == 0)
 		{
-			throw new InvalidArgumentException('$height must be numeric and greater than zero');
+			$height = intval(($width * $this->current_dimensions['height']) / $this->current_dimensions['width']);
 		}
 
-		// make sure we're not exceeding our image size if we're not supposed to
 		$this->checkingMaxSize($width, $height);
-
 		$this->calcImageSizeStrict($this->current_dimensions['width'], $this->current_dimensions['height']);
 
 		// resize the image to be close to our desired dimensions
@@ -1415,6 +1439,12 @@ class GD extends PHPThumb
 		// create the working image
 		$this->working_image = imagecreatetruecolor($this->max_width, $this->max_height);
 
+		if ($this->working_image === false)
+		{
+			throw new RuntimeException(
+				'GD: failed to create canvas for adaptiveResizeQuadrant()'
+				);
+		}
 
 		$this->preserveAlpha();
 
@@ -1430,7 +1460,7 @@ class GD extends PHPThumb
 			// Image is landscape
 			$crop_x = match ($quadrant) {
 				'L'		=> 0,
-				'R'		=> intval(($this->current_dimensions['width'] - $this->max_width)),
+				'R'		=> intval($this->current_dimensions['width'] - $this->max_width),
 				default	=> intval(($this->current_dimensions['width'] - $this->max_width) / 2),
 			};
 		}
@@ -1439,7 +1469,7 @@ class GD extends PHPThumb
 			// Image is portrait
 			$crop_y = match ($quadrant) {
 				'T'		=> 0,
-				'B'		=> intval(($this->current_dimensions['height'] - $this->max_height)),
+				'B'		=> intval($this->current_dimensions['height'] - $this->max_height),
 				default	=> intval(($this->current_dimensions['height'] - $this->max_height) / 2),
 			};
 		}

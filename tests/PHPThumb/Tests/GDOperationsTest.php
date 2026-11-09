@@ -88,6 +88,72 @@ class GDOperationsTest extends TestCase
 		$this->thumb->adaptiveResize(0, 0);
 	}
 
+	// ---------------- adaptiveResize(): zero axes ----------------
+
+	public function testAdaptiveResizeDerivesAZeroHeightFromTheAspectRatio(): void
+	{
+		// A height of 0 means "derive it" — the same convention the
+		// Imagick backend uses.
+		$this->thumb->adaptiveResize(200, 0);
+
+		self::assertSame(200, $this->thumb->getCurrentDimensions()['width']);
+		self::assertSame(150, $this->thumb->getCurrentDimensions()['height']);
+	}
+
+	public function testAdaptiveResizeWithAZeroHeightProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResize(200, 0);
+
+		self::assertSame(200, imagesx($this->thumb->getOldImage()));
+		self::assertSame(150, imagesy($this->thumb->getOldImage()));
+	}
+
+	public function testAdaptiveResizeDerivesAZeroWidthFromTheAspectRatio(): void
+	{
+		$this->thumb->adaptiveResize(0, 200);
+
+		self::assertSame(267, $this->thumb->getCurrentDimensions()['width']);
+		self::assertSame(200, $this->thumb->getCurrentDimensions()['height']);
+	}
+
+	// ---------------- adaptiveResizePercent(): zero axes ----------------
+
+	public function testAdaptiveResizePercentDerivesAZeroHeightFromTheAspectRatio(): void
+	{
+		// Previously this reached imagecreatetruecolor() with a zero
+		// height, which GD rejects outright.
+		$this->thumb->adaptiveResizePercent(200, 0, 25);
+
+		self::assertSame(200, $this->thumb->getCurrentDimensions()['width']);
+		self::assertSame(150, $this->thumb->getCurrentDimensions()['height']);
+	}
+
+	public function testAdaptiveResizePercentWithAZeroHeightProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResizePercent(200, 0, 25);
+
+		self::assertSame(200, imagesx($this->thumb->getOldImage()));
+		self::assertSame(150, imagesy($this->thumb->getOldImage()));
+	}
+
+	// ---------------- adaptiveResizeQuadrant(): zero axes ----------------
+
+	public function testAdaptiveResizeQuadrantDerivesAZeroHeightFromTheAspectRatio(): void
+	{
+		$this->thumb->adaptiveResizeQuadrant(200, 0, 'C');
+
+		self::assertSame(200, $this->thumb->getCurrentDimensions()['width']);
+		self::assertSame(150, $this->thumb->getCurrentDimensions()['height']);
+	}
+
+	public function testAdaptiveResizeQuadrantWithAZeroHeightProducesAnImageOfTheRequestedSize(): void
+	{
+		$this->thumb->adaptiveResizeQuadrant(200, 0, 'C');
+
+		self::assertSame(200, imagesx($this->thumb->getOldImage()));
+		self::assertSame(150, imagesy($this->thumb->getOldImage()));
+	}
+
 	// ---------------- adaptiveResizePercent() ----------------
 
 	public function testAdaptiveResizePercent(): void
