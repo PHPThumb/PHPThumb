@@ -557,9 +557,12 @@ class Imagick extends PHPThumb
 
 				// Shadow draw: fill only, no stroke.
 				$shadow_draw = null;
+				$shadow_rgb  = null;
+				$shadow_blur = 0;
 				if ($cfg['shadow']['enabled'])
 				{
 					$shadow_rgb = $this->parseColor($cfg['shadow']['color']);
+					$shadow_blur = $this->resolveShadowBlur($cfg['shadow']['blur'] ?? 0);
 					$shadow_draw = $build_draw();
 					$shadow_draw->setFillColor(new \ImagickPixel(sprintf(
 						'rgba(%d, %d, %d, 1)',
@@ -633,7 +636,66 @@ class Imagick extends PHPThumb
 
 				$align_normalized = strtolower($cfg['align']);
 
-				// ----- Per-line rendering in shadow → stroke → main order -----
+				// ----- Per-line geometry -----
+				// Computed once so that the shadow, the stroke and the main text
+				// can be drawn in separate passes. The shadow needs its own pass
+				// when it is blurred, because the blurred layer is composited
+				// underneath the text as a single unit.
+				$line_xs   = [];
+				$baselines = [];
+
+				foreach ($lines as $i => $line)
+				{
+					$line_w = $line_widths[$i];
+					$line_xs[$i] = match ($align_normalized) {
+						'left'  => $block_x,
+						'right' => $block_x + $block_width - $line_w,
+						default => (int) ($block_x + ($block_width - $line_w) / 2),
+					};
+
+					// baseline of line i = first_line_baseline + i * line_height.
+					$baselines[$i] = $first_line_baseline + $i * $line_height;
+				}
+
+				// ----- 1. Shadow -----
+				if ($shadow_draw !== null)
+				{
+					if ($shadow_blur > 0)
+					{
+						$this->drawImagickBlurredShadow(
+							$shadow_draw,
+							$lines,
+							$line_xs,
+							$baselines,
+							$cfg,
+							$imagick_angle,
+							$shadow_rgb,
+							$shadow_blur,
+							$current_width,
+							$current_height
+						);
+					}
+					else
+					{
+						foreach ($lines as $i => $line)
+						{
+							if ($line === '')
+							{
+								continue;
+							}
+
+							$this->old_image->annotateImage(
+								$shadow_draw,
+								$line_xs[$i] + $cfg['shadow']['offsetX'],
+								$baselines[$i] + $cfg['shadow']['offsetY'],
+								$imagick_angle,
+								$line
+							);
+						}
+					}
+				}
+
+				// ----- 2. Stroke + 3. Main -----
 				foreach ($lines as $i => $line)
 				{
 					if ($line === '')
@@ -641,27 +703,8 @@ class Imagick extends PHPThumb
 						continue;
 					}
 
-					$line_w = $line_widths[$i];
-					$line_x = match ($align_normalized) {
-						'left'  => $block_x,
-						'right' => $block_x + $block_width - $line_w,
-						default => (int) ($block_x + ($block_width - $line_w) / 2),
-					};
-
-					// baseline of line i = first-line baseline + i * line_height.
-					$baseline = $first_line_baseline + $i * $line_height;
-
-					// 1. Shadow.
-					if ($shadow_draw !== null)
-					{
-						$this->old_image->annotateImage(
-							$shadow_draw,
-							$line_x + $cfg['shadow']['offsetX'],
-							$baseline + $cfg['shadow']['offsetY'],
-							$imagick_angle,
-							$line
-						);
-					}
+					$line_x  = $line_xs[$i];
+					$baseline = $baselines[$i];
 
 					// 2. Stroke (transparent fill → outline only).
 					if ($stroke_draw !== null)
@@ -2585,6 +2628,124 @@ class Imagick extends PHPThumb
 			$this->old_image->getImageWidth(),
 			$this->old_image->getImageHeight(),
 		];
+	}
+
+	/**
+	 * Clamps the shadow blur radius to a usable range.
+	 *
+	 * @param mixed $blur The raw 'shadow' => 'blur' option value.
+	 * @return int The blur radius, 0 (no blur) to 10.
+	 */
+	protected function resolveShadowBlur($blur): int
+	{
+		if (!is_numeric($blur))
+		{
+			return 0;
+		}
+
+		$blur = (int) round((float) $blur);
+
+		if ($blur < 0)
+		{
+			return 0;
+		}
+
+		return min($blur, 10);
+	}
+
+	/**
+	 * Makes sure an Imagick image has an active alpha channel.
+	 *
+	 * Imagick::setImageMatte() is deprecated in ext-imagick 3.7+ and was
+	 * removed from some builds; Imagick::setImageAlphaChannel() does not
+	 * exist in ext-imagick 3.4.x. The modern API is preferred, with the
+	 * legacy one as a fallback.
+	 */
+	protected function ensureAlphaChannel(\Imagick $image): void
+	{
+		if (method_exists($image, 'getImageAlphaChannel') && $image->getImageAlphaChannel())
+		{
+			return;
+		}
+
+		if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_ACTIVATE'))
+		{
+			$image->setImageAlphaChannel(\Imagick::ALPHACHANNEL_ACTIVATE);
+
+			return;
+		}
+
+		if (method_exists($image, 'setImageMatte'))
+		{
+			$image->setImageMatte(true);
+		}
+	}
+
+	/**
+	 * Renders the text shadow into a separate layer, blurs it and composites
+	 * the result underneath the text.
+	 *
+	 * The layer is created with the shadow colour at zero alpha, so every
+	 * pixel of the layer carries the shadow hue. The blur mixes the RGB and
+	 * the alpha channel independently, which means the shadow keeps its
+	 * uniform colour instead of bleeding black into its edges.
+	 */
+	protected function drawImagickBlurredShadow(
+		\ImagickDraw $shadow_draw,
+		array $lines,
+		array $line_xs,
+		array $baselines,
+		array $cfg,
+		float $angle,
+		array $shadow_rgb,
+		int $blur,
+		int $current_width,
+		int $current_height
+		): void
+	{
+		$layer = new \Imagick();
+		$layer->newImage(
+			$current_width,
+			$current_height,
+			new \ImagickPixel(sprintf(
+				'rgba(%d, %d, %d, 0)',
+				$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b']
+			))
+		);
+
+		$this->ensureAlphaChannel($layer);
+
+		foreach ($lines as $i => $line)
+		{
+			if ($line === '')
+			{
+				continue;
+			}
+
+			$layer->annotateImage(
+				$shadow_draw,
+				$line_xs[$i] + $cfg['shadow']['offsetX'],
+				$baselines[$i] + $cfg['shadow']['offsetY'],
+				$angle,
+				$line
+			);
+		}
+
+		// One 3x3 gaussian pass has a standard deviation of about 0.7 px, so
+		// the sigma that matches the GD backend's repeated-pass blur is
+		// 0.7 * sqrt(radius). A radius of 0 lets ImageMagick pick the
+		// matching kernel size.
+		$layer->gaussianBlurImage(0, 0.7 * sqrt((float) $blur));
+
+		$this->old_image->compositeImage(
+			$layer,
+			\Imagick::COMPOSITE_OVER,
+			0,
+			0
+		);
+
+		$layer->clear();
+		$layer->destroy();
 	}
 
 	/**

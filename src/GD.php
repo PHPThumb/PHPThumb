@@ -588,20 +588,12 @@ class GD extends PHPThumb
 				throw new RuntimeException('GD: failed to allocate main text color');
 			}
 
-			$shadow_color = null;
+			$shadow_rgb  = null;
+			$shadow_blur = 0;
 			if ($cfg['shadow']['enabled'])
 			{
-				$s = $this->parseColor($cfg['shadow']['color']);
-				$c = imagecolorallocatealpha(
-					$this->old_image,
-					$s['r'], $s['g'], $s['b'],
-					$this->alphaToGd127(100)
-					);
-				if ($c === false)
-				{
-					throw new RuntimeException('GD: failed to allocate shadow color');
-				}
-				$shadow_color = $c;
+				$shadow_rgb  = $this->parseColor($cfg['shadow']['color']);
+				$shadow_blur = $this->resolveShadowBlur($cfg['shadow']['blur'] ?? 0);
 			}
 
 			$stroke_color = null;
@@ -624,7 +616,45 @@ class GD extends PHPThumb
 
 			$align_normalized = strtolower($cfg['align']);
 
-			// ---- Per-line rendering in shadow → stroke → main order ----
+			// ---- Per-line geometry ----
+			// The X position and the baseline of every line are computed once
+			// so that the shadow, the stroke and the main text can be drawn
+			// in separate passes. The shadow needs its own pass when it is
+			// blurred, because the blurred layer is composited underneath the
+			// text as a single unit.
+			$line_xs   = [];
+			$baselines = [];
+
+			foreach ($lines as $i => $line)
+			{
+				$line_w = $line_widths[$i];
+				$line_xs[$i] = match ($align_normalized) {
+					'left'  => $block_x,
+					'right' => $block_x + $block_width - $line_w,
+					default => (int) ($block_x + ($block_width - $line_w) / 2),
+				};
+
+				// baseline of line i = first_line_baseline + i * line_height.
+				$baselines[$i] = $first_line_baseline + $i * $line_height;
+			}
+
+			// ---- 1. Shadow — drawn beneath everything else ----
+			if ($shadow_rgb !== null)
+			{
+				$this->drawGdShadow(
+					$lines,
+					$line_xs,
+					$baselines,
+					$cfg,
+					$ttf_path,
+					$shadow_rgb,
+					$shadow_blur,
+					$current_width,
+					$current_height
+				);
+			}
+
+			// ---- 2. Stroke + 3. Main text ----
 			foreach ($lines as $i => $line)
 			{
 				if ($line === '')
@@ -632,29 +662,8 @@ class GD extends PHPThumb
 					continue;
 				}
 
-				$line_w = $line_widths[$i];
-				$line_x = match ($align_normalized) {
-					'left'  => $block_x,
-					'right' => $block_x + $block_width - $line_w,
-					default => (int) ($block_x + ($block_width - $line_w) / 2),
-				};
-
-				// baseline of line i = first-line baseline + i * line_height.
-				$baseline = $first_line_baseline + $i * $line_height;
-
-				// 1. Shadow — drawn beneath everything else.
-				if ($shadow_color !== null)
-				{
-					imagettftext(
-						$this->old_image,
-						$cfg['size'], $cfg['angle'],
-						$line_x + $cfg['shadow']['offsetX'],
-						$baseline + $cfg['shadow']['offsetY'],
-						$shadow_color,
-						$ttf_path,
-						$line
-						);
-				}
+				$line_x  = $line_xs[$i];
+				$baseline = $baselines[$i];
 
 				// 2. Stroke — replicate text at every pixel offset within
 				//    stroke_w. imagettftext() has no native stroke, so
@@ -1122,6 +1131,170 @@ class GD extends PHPThumb
 			$x + $w + $padding, $y + $h + $padding,
 			$bg_color
 			);
+	}
+
+	/**
+	 * Clamps the shadow blur radius to a usable range.
+	 *
+	 * The blur is implemented with repeated 3x3 gaussian passes, so the cost
+	 * grows with the radius. Anything above 10 is clamped: past that point
+	 * the shadow is indistinguishable from a plain soft glow and the extra
+	 * processing time is not worth it.
+	 *
+	 * @param mixed $blur The raw 'shadow' => 'blur' option value.
+	 * @return int The blur radius, 0 (no blur) to 10.
+	 */
+	protected function resolveShadowBlur($blur): int
+	{
+		if (!is_numeric($blur))
+		{
+			return 0;
+		}
+
+		$blur = (int) round((float) $blur);
+
+		if ($blur < 0)
+		{
+			return 0;
+		}
+
+		return min($blur, 10);
+	}
+
+	/**
+	 * Renders the text shadow, optionally blurring it.
+	 *
+	 * Without a blur radius the shadow is drawn straight onto the image, one
+	 * imagettftext() call per line, exactly as it always was.
+	 *
+	 * With a blur radius the shadow is drawn onto a separate transparent
+	 * layer, blurred with repeated 3x3 gaussian passes, and then composited
+	 * underneath the text as a single unit. The layer's RGB channels are
+	 * pre-filled with the shadow colour: GD blurs the RGB and the alpha
+	 * channel independently, so a black (0,0,0) background would bleed dark
+	 * fringes into the edges of a coloured shadow.
+	 *
+	 * @param array  $lines     The text lines.
+	 * @param array  $line_xs   X position of every line.
+	 * @param array  $baselines Baseline of every line.
+	 * @param array  $cfg       The resolved text() options.
+	 * @param string $ttf_path  The resolved font path.
+	 * @param array  $shadow_rgb The shadow colour as [r, g, b].
+	 * @param int    $blur      The blur radius in pixels (0 = no blur).
+	 */
+	protected function drawGdShadow(
+		array $lines,
+		array $line_xs,
+		array $baselines,
+		array $cfg,
+		string $ttf_path,
+		array $shadow_rgb,
+		int $blur,
+		int $current_width,
+		int $current_height
+		): void
+	{
+		$target = $this->old_image;
+
+		if ($blur > 0)
+		{
+			$target = imagecreatetruecolor($current_width, $current_height);
+
+			if ($target === false)
+			{
+				throw new RuntimeException('GD: failed to create shadow layer');
+			}
+
+			// The layer starts out fully transparent, but its RGB channels are
+			// set to the shadow colour (see the method docblock).
+			imagealphablending($target, false);
+			imagesavealpha($target, true);
+
+			$transparent = imagecolorallocatealpha(
+				$target,
+				$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b'],
+				127
+			);
+
+			if ($transparent === false)
+			{
+				throw new RuntimeException('GD: failed to allocate shadow layer colour');
+			}
+
+			imagefilledrectangle(
+				$target,
+				0, 0,
+				$current_width, $current_height,
+				$transparent
+			);
+		}
+
+		$shadow_color = imagecolorallocatealpha(
+			$target,
+			$shadow_rgb['r'], $shadow_rgb['g'], $shadow_rgb['b'],
+			$this->alphaToGd127(100)
+		);
+
+		if ($shadow_color === false)
+		{
+			throw new RuntimeException('GD: failed to allocate shadow color');
+		}
+
+		foreach ($lines as $i => $line)
+		{
+			if ($line === '')
+			{
+				continue;
+			}
+
+			imagettftext(
+				$target,
+				$cfg['size'], $cfg['angle'],
+				$line_xs[$i] + $cfg['shadow']['offsetX'],
+				$baselines[$i] + $cfg['shadow']['offsetY'],
+				$shadow_color,
+				$ttf_path,
+				$line
+			);
+		}
+
+		if ($blur <= 0)
+		{
+			return;
+		}
+
+		// Blur the layer. A single pass is a 3x3 gaussian kernel, so the
+		// number of passes is the blur radius in pixels.
+		for ($i = 0; $i < $blur; $i++)
+		{
+			if (imagefilter($target, IMG_FILTER_GAUSSIAN_BLUR) === false)
+			{
+				imagedestroy($target);
+
+				throw new RuntimeException('GD: shadow blur failed');
+			}
+		}
+
+		// Composite the blurred layer over the image. Alpha blending has to
+		// be enabled for the copy (without it the transparent parts of the
+		// layer would overwrite the image), so the original settings are
+			// restored afterwards.
+			$blending   = imagealphablending($this->old_image, null);
+			$save_alpha = imagesavealpha($this->old_image, null);
+
+			imagealphablending($this->old_image, true);
+			imagecopy(
+				$this->old_image,
+				$target,
+				0, 0,
+				0, 0,
+				$current_width, $current_height
+			);
+
+			imagealphablending($this->old_image, $blending);
+			imagesavealpha($this->old_image, $save_alpha);
+
+			imagedestroy($target);
 	}
 
 	/**
