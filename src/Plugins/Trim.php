@@ -528,46 +528,4 @@ class Trim implements PluginInterface
 			$pixel_iterator->clear();
 			return false;
 	}
-
-	/**
-	 * Convert the user's RGB colour (0-255 per channel) to an ImagickPixel.
-	 */
-	protected function colorToPixel(): \ImagickPixel
-	{
-		return new \ImagickPixel(
-			sprintf('rgb(%d, %d, %d)', $this->color[0], $this->color[1], $this->color[2])
-			);
-	}
-
-	/**
-	 * Normalise a value returned by ImagickPixel::getColor() to a [0, 1] float.
-	 *
-	 * Imagick can return either:
-	 *   - int in [0, QuantumRange]  (e.g. 0..255 or 0..65535), or
-	 *   - float in [0, 1]          (for sRGB images on some builds)
-	 *
-	 * We accept both shapes and normalise to a [0, 1] float so the comparison is
-	 * build-independent.
-	 */
-	protected function normalizeChannelValue($value): float
-	{
-		if (is_int($value)) {
-			$quantum = \Imagick::getQuantum();
-
-			return ($quantum > 0) ? ($value / $quantum) : 0.0;
-		}
-
-		return (float) $value;
-	}
-
-	/**
-	 * Converts RGB array to 24-bit integer color value
-	 *
-	 * @param array<int, int|float> $rgb RGB array [R, G, B]
-	 * @return int 24-bit color value
-	 */
-	protected function rgbToInt(array $rgb): int
-	{
-		return ((int)$rgb[0] << 16) | ((int)$rgb[1] << 8) | (int)$rgb[2];
-	}
 }
