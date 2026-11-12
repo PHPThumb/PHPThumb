@@ -291,7 +291,7 @@ class Reflection implements PluginInterface
 			$new_height,
 			new \ImagickPixel('white')
 			);
-		$canvas->setImageMatte(true);
+		$this->activateAlphaChannel($canvas);
 		$canvas->setImageFormat($base_image->getImageFormat());
 
 		// Original on top.
@@ -324,7 +324,7 @@ class Reflection implements PluginInterface
 				$reflection_height,
 				new \ImagickPixel('white')
 				);
-			$gradient->setImageMatte(true);
+			$this->activateAlphaChannel($gradient);
 			$gradient->evaluateImage(
 				\Imagick::EVALUATE_MULTIPLY,
 				$this->white / 100,
@@ -432,4 +432,26 @@ class Reflection implements PluginInterface
 
 		return $as_string ? implode(' ', $rgb) : $rgb;
 	}
+
+	/**
+	 * Activates the alpha channel on an Imagick image in a version-safe way.
+	 *
+	 * Imagick::setImageMatte() is deprecated in ext-imagick 3.7+ and was
+	 * removed from some builds; Imagick::setImageAlphaChannel() does not
+	 * exist in ext-imagick 3.4.x. The modern API is preferred, with the
+	 * legacy one as a fallback.
+	 */
+	protected function activateAlphaChannel(\Imagick $image): void
+	{
+		if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_ACTIVATE')) {
+			$image->setImageAlphaChannel(\Imagick::ALPHACHANNEL_ACTIVATE);
+
+			return;
+		}
+
+		if (method_exists($image, 'setImageMatte')) {
+			$image->setImageMatte(true);
+		}
+	}
+
 }
